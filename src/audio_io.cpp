@@ -1,16 +1,15 @@
-#include "audio_input.h"
+#include "audio_io.h"
 
 #include <Arduino.h>
 #include <driver/i2s.h>
 
-namespace AudioInput {
+namespace AudioIo {
 namespace {
 
 constexpr i2s_port_t PORT = I2S_NUM_0;
 constexpr uint32_t SAMPLE_RATE = 44100;
-constexpr size_t BLOCK_FRAMES = 256;
 
-int16_t buffer[BLOCK_FRAMES * 2];
+int16_t inputBuffer[BLOCK_FRAMES * 2];
 
 uint16_t magnitude(int16_t sample) {
   const int32_t value = sample;
@@ -21,7 +20,7 @@ uint16_t magnitude(int16_t sample) {
 
 bool begin() {
   const i2s_config_t config = {
-      .mode = static_cast<i2s_mode_t>(I2S_MODE_MASTER | I2S_MODE_RX),
+      .mode = static_cast<i2s_mode_t>(I2S_MODE_MASTER | I2S_MODE_RX | I2S_MODE_TX),
       .sample_rate = SAMPLE_RATE,
       .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,
       .channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT,
@@ -30,7 +29,7 @@ bool begin() {
       .dma_buf_count = 4,
       .dma_buf_len = BLOCK_FRAMES,
       .use_apll = true,
-      .tx_desc_auto_clear = false,
+      .tx_desc_auto_clear = true,
       .fixed_mclk = SAMPLE_RATE * 256,
   };
 
@@ -51,7 +50,8 @@ bool begin() {
 
 bool readPeak(Channel channel, uint16_t& peak) {
   size_t bytesRead = 0;
-  if (i2s_read(PORT, buffer, sizeof(buffer), &bytesRead, pdMS_TO_TICKS(100)) != ESP_OK) {
+  if (i2s_read(PORT, inputBuffer, sizeof(inputBuffer), &bytesRead,
+               pdMS_TO_TICKS(100)) != ESP_OK) {
     return false;
   }
 
@@ -61,10 +61,18 @@ bool readPeak(Channel channel, uint16_t& peak) {
   const size_t slot = channel == Channel::Left ? 0 : 1;
   peak = 0;
   for (size_t frame = 0; frame < frames; ++frame) {
-    const uint16_t value = magnitude(buffer[frame * 2 + slot]);
+    const uint16_t value = magnitude(inputBuffer[frame * 2 + slot]);
     if (value > peak) peak = value;
   }
   return true;
 }
 
-}  // namespace AudioInput
+bool write(const int16_t* stereoSamples) {
+  size_t bytesWritten = 0;
+  constexpr size_t bytesToWrite = BLOCK_FRAMES * 2 * sizeof(int16_t);
+  return i2s_write(PORT, stereoSamples, bytesToWrite, &bytesWritten,
+                   pdMS_TO_TICKS(100)) == ESP_OK &&
+         bytesWritten == bytesToWrite;
+}
+
+}  // namespace AudioIo

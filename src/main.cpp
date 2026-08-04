@@ -1,5 +1,6 @@
 #include <Arduino.h>
 
+#include "ads7830.h"
 #include "app_config.h"
 #include "audio_io.h"
 #include "es8388.h"
@@ -7,6 +8,8 @@
 #include "synth_voice.h"
 
 namespace {
+
+uint32_t lastPotentiometerReportMs = 0;
 
 void stop(const char* message) {
   Serial.println(message);
@@ -22,6 +25,9 @@ void setup() {
   // I2S starts first because the ES8388 needs MCLK during initialization.
   if (!AudioIo::begin()) stop("[FATAL] I2S initialization failed");
   if (!Es8388::begin()) stop("[FATAL] ES8388 initialization failed");
+  if (!Ads7830::begin()) stop("[FATAL] ADS7830 initialization failed");
+
+  lastPotentiometerReportMs = millis();
 }
 
 void loop() {
@@ -31,8 +37,28 @@ void loop() {
     if (HitDetector::update(peak, velocity)) {
       SynthVoice::trigger(velocity);
     }
-    Serial.printf(">peak:%u\n", peak);
+    if (AppConfig::LOG_AUDIO_PEAKS) Serial.printf(">peak:%u\n", peak);
   }
 
   AudioIo::write(SynthVoice::render());
+
+  const uint32_t now = millis();
+  if (AppConfig::LOG_POTENTIOMETERS &&
+      now - lastPotentiometerReportMs >=
+      AppConfig::POTENTIOMETER_REPORT_INTERVAL_MS) {
+    lastPotentiometerReportMs = now;
+
+    for (uint8_t channel = 0;
+         channel < AppConfig::POTENTIOMETER_COUNT &&
+         channel < Ads7830::CHANNEL_COUNT;
+         ++channel) {
+      float value;
+      if (Ads7830::readAverage(
+              channel, AppConfig::POTENTIOMETER_SAMPLES_PER_READING, value)) {
+        Serial.printf("Potentiometer %u: %.2f\n", channel, value);
+      } else {
+        Serial.printf("[WARN] Failed to read potentiometer %u\n", channel);
+      }
+    }
+  }
 }

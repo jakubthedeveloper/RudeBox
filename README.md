@@ -11,7 +11,47 @@ The firmware currently:
 - triggers one monophonic synth-drum voice per hit,
 - generates a triangle waveform with amplitude and pitch envelopes,
 - sends the same synthesized signal to the left and right audio outputs,
-- streams the measured input peak to Teleplot as `>peak:<value>`.
+- streams the measured input peak to Teleplot as `>peak:<value>`,
+- reads potentiometer channel 0 from an ADS7830 every second.
+
+## Potentiometers
+
+The ADS7830 uses a separate I2C bus from the ES8388 codec:
+
+- SDA: GPIO23
+- SCL: GPIO18
+- I2C address: `0x48`
+
+The tested board is labeled `ADS7830 STEMMA QT`. Its working reference wiring
+is:
+
+- REF: connected to 3.3V,
+- COM: left externally unconnected,
+- `Ext Ref` solder jumper: closed,
+- `Ext Com` solder jumper: closed.
+
+With the `Ext Com` jumper closed, COM is connected on the board and must not
+also be wired externally to GND in this setup. The 10kΩ potentiometer is used
+as a voltage divider between 3.3V and GND, with its wiper connected through a
+1kΩ series resistor to ADS7830 channel A0.
+
+The number of active channels is set by `POTENTIOMETER_COUNT` in
+`include/app_config.h`. The driver supports all eight ADS7830 channels; only
+channel 0 is enabled by default. Each reported value is the average of 16 raw
+8-bit samples and is printed with two decimal places on the 0 to 255 scale at
+115200 baud. Averaging makes noisy readings more stable, but does not increase
+the native resolution of the ADS7830.
+
+## Logging
+
+Serial output categories can be enabled independently in
+`include/app_config.h`:
+
+- `LOG_AUDIO_PEAKS` — streams ES8388 input peaks in Teleplot format,
+- `LOG_POTENTIOMETERS` — prints raw ADS7830 readings.
+
+By default only potentiometer logging is enabled. Fatal initialization errors
+are always printed.
 
 ## Sound parameters
 
@@ -45,5 +85,5 @@ Build and upload the firmware:
 pio run -t upload
 ```
 
-To view input peaks, close the PlatformIO Serial Monitor, open Teleplot, select
-the board serial port, and use `115200` baud.
+To use the serial output, select the board serial port and use `115200` baud.
+For Teleplot peak monitoring, enable `LOG_AUDIO_PEAKS` first.

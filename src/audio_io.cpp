@@ -7,7 +7,6 @@ namespace AudioIo {
 namespace {
 
 constexpr i2s_port_t PORT = I2S_NUM_0;
-constexpr uint32_t SAMPLE_RATE = 44100;
 
 int16_t inputBuffer[BLOCK_FRAMES * 2];
 

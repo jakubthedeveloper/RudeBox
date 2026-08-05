@@ -18,7 +18,23 @@ struct Setting {
   uint8_t value;
 };
 
-bool write(uint8_t reg, uint8_t value) {
+void setPowerAmplifierEnabled(bool enabled) {
+  digitalWrite(PA_ENABLE_PIN, enabled ? HIGH : LOW);
+}
+
+void preparePowerAmplifier() {
+  pinMode(PA_ENABLE_PIN, OUTPUT);
+  setPowerAmplifierEnabled(false);
+}
+
+bool connectToCodec() {
+  if (!wire.begin(33, 32, 400000)) return false;
+
+  wire.beginTransmission(ADDRESS);
+  return wire.endTransmission() == 0;
+}
+
+bool writeAndVerify(uint8_t reg, uint8_t value) {
   wire.beginTransmission(ADDRESS);
   wire.write(reg);
   wire.write(value);
@@ -33,18 +49,10 @@ bool write(uint8_t reg, uint8_t value) {
   return wire.read() == value;
 }
 
-}  // namespace
-
-bool begin() {
-  pinMode(PA_ENABLE_PIN, OUTPUT);
-  digitalWrite(PA_ENABLE_PIN, LOW);
-
-  wire.begin(33, 32, 400000);
-  wire.beginTransmission(ADDRESS);
-  if (wire.endTransmission() != 0) return false;
-
+bool configureCodec() {
   const uint8_t gain =
-      AppConfig::INPUT_GAIN_CODE > 4 ? 4 : AppConfig::INPUT_GAIN_CODE;
+      AppConfig::AudioInput::GAIN_CODE > 4 ? 4
+                                           : AppConfig::AudioInput::GAIN_CODE;
   const uint8_t stereoGain = static_cast<uint8_t>((gain << 4) | gain);
 
   const Setting settings[] = {
@@ -84,9 +92,19 @@ bool begin() {
   };
 
   for (const Setting& setting : settings) {
-    if (!write(setting.reg, setting.value)) return false;
+    if (!writeAndVerify(setting.reg, setting.value)) return false;
   }
-  digitalWrite(PA_ENABLE_PIN, HIGH);
+  return true;
+}
+
+}  // namespace
+
+bool begin() {
+  preparePowerAmplifier();
+  if (!connectToCodec()) return false;
+  if (!configureCodec()) return false;
+
+  setPowerAmplifierEnabled(true);
   return true;
 }
 

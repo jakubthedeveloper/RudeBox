@@ -23,23 +23,24 @@ uint8_t commandForChannel(uint8_t channel) {
 }  // namespace
 
 bool begin() {
-  if (!wire.begin(AppConfig::ADS7830_SDA_PIN, AppConfig::ADS7830_SCL_PIN,
+  if (!wire.begin(AppConfig::Ui::ADS7830_SDA_PIN,
+                  AppConfig::Ui::ADS7830_SCL_PIN,
                   I2C_FREQUENCY_HZ)) {
     return false;
   }
 
-  wire.beginTransmission(AppConfig::ADS7830_ADDRESS);
+  wire.beginTransmission(AppConfig::Ui::ADS7830_ADDRESS);
   return wire.endTransmission() == 0;
 }
 
 bool read(uint8_t channel, uint8_t& value) {
   if (channel >= CHANNEL_COUNT) return false;
 
-  wire.beginTransmission(AppConfig::ADS7830_ADDRESS);
+  wire.beginTransmission(AppConfig::Ui::ADS7830_ADDRESS);
   wire.write(commandForChannel(channel));
   if (wire.endTransmission() != 0) return false;
 
-  if (wire.requestFrom(AppConfig::ADS7830_ADDRESS,
+  if (wire.requestFrom(AppConfig::Ui::ADS7830_ADDRESS,
                        static_cast<uint8_t>(1)) != 1) {
     return false;
   }

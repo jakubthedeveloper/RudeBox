@@ -6,13 +6,14 @@ V2.2 with the ESP32-A1S module and ES8388 audio codec.
 The firmware currently:
 
 - reads drum pad impulses from the right channel of ES8388 LINE IN,
-- ignores peaks below `120` and limits peaks above `3000`,
-- converts the accepted peak range into normalized velocity,
+- ignores peaks below the fixed trigger threshold,
+- maps accepted peaks into normalized velocity using a sensitivity control,
 - triggers one monophonic synth-drum voice per hit,
 - generates a triangle waveform with amplitude and pitch envelopes,
+- applies output headroom and final brickwall limiting,
 - sends the same synthesized signal to the left and right audio outputs,
 - streams the measured input peak to Teleplot as `>peak:<value>`,
-- reads potentiometer channel 0 from an ADS7830 every second,
+- reads three potentiometers from an ADS7830 about every 5 ms,
 - briefly lights the activity LED after a drum-pad hit is detected.
 
 ## Code structure
@@ -27,6 +28,11 @@ processing details:
 - `synth_voice.cpp` defines the sound of one voice. Its public `trigger()` and
   `render()` functions delegate envelope, pitch, phase, and stereo-buffer work
   to focused private helpers.
+- `synth_controls.cpp` scans and filters the three potentiometers, maps their
+  positions to synth parameters, and owns the single pad-peak-to-velocity
+  mapping.
+- `output_limiter.cpp` applies the final master gain and a block-lookahead
+  sample-peak limiter before samples are sent to I2S.
 - `waveforms.cpp` owns the reusable waveform generator; it is independent of a
   particular synth voice.
 - `user_interface.cpp` owns potentiometer polling, UI logging, and LED timing.
@@ -51,17 +57,18 @@ is:
 - `Ext Com` solder jumper: closed.
 
 With the `Ext Com` jumper closed, COM is connected on the board and must not
-also be wired externally to GND in this setup. The 10kΩ potentiometer is used
+also be wired externally to GND in this setup. Each 10kΩ potentiometer is used
 as a voltage divider between 3.3V and GND, with its wiper connected through a
-1kΩ series resistor to ADS7830 channel A0.
+1kΩ series resistor to its ADS7830 input:
 
-The number of active channels is set by
-`AppConfig::Ui::POTENTIOMETER_COUNT` in `include/app_config.h`. The driver
-supports all eight ADS7830 channels; only channel 0 is enabled by default. Each
-reported value is the average of 16 raw 8-bit samples and is printed with two
-decimal places on the 0 to 255 scale at 115200 baud. Averaging makes noisy
-readings more stable, but does not increase the native resolution of the
-ADS7830.
+- A0 — sensitivity of the pad peak-to-velocity response,
+- A1 — base oscillator pitch from 45 Hz to 1200 Hz,
+- A2 — pitch-drop depth from 0 to 4.5 octaves.
+
+All channels are sampled every 5 ms. An EMA filter and a two-count dead zone
+stabilize the native 8-bit readings. Pitch uses exponential mapping, while
+pitch-drop uses a squared curve for finer control near zero. The fixed trigger
+threshold is independent from the sensitivity potentiometer.
 
 ### Activity LED
 
@@ -74,42 +81,49 @@ detection. By default it is configured as active-low on GPIO22 and stays on for
 ## Logging
 
 Serial output categories can be enabled independently in the
-`AppConfig::Diagnostics` and `AppConfig::Ui` sections of
+`AppConfig::Diagnostics` and `AppConfig::Controls` sections of
 `include/app_config.h`:
 
 - `AppConfig::Diagnostics::LOG_AUDIO_PEAKS` — streams ES8388 input peaks in
   Teleplot format,
-- `AppConfig::Ui::LOG_POTENTIOMETERS` — prints raw ADS7830 readings.
+- `AppConfig::Controls::LOG_CONTROL_VALUES` — prints throttled raw, filtered,
+  and mapped potentiometer values.
 
-By default only potentiometer logging is enabled. Fatal initialization errors
-are always printed.
+Both diagnostic modes are disabled by default. Fatal initialization errors are
+always printed.
 
 ## Sound parameters
 
-The current sound parameters are compile-time defaults in the
-`AppConfig::Voice` section of `include/app_config.h`. Physical potentiometers
-or encoders will be added later to control them directly.
+Envelope and amplitude parameters are compile-time defaults in the
+`AppConfig::Voice` section of `include/app_config.h`. Potentiometer scanning,
+mapping ranges, curves, channel inversion, and initial control values are kept
+together in `AppConfig::Controls` for hardware tuning.
 
-- `BASE_FREQUENCY_HZ` — oscillator frequency after the pitch envelope reaches zero.
-- `PITCH_SWEEP_HZ` — maximum frequency offset added at the beginning of a hit.
+The final output stage is configured in `AppConfig::AudioOutput`. It applies a
+master gain of `0.5` (about -6 dB), then protects the codec input with a
+brickwall ceiling at `0.8` of full scale (about -1.9 dBFS). The limiter uses
+immediate block attack and a configurable release; it preserves the velocity
+dynamics instead of simply clipping the synthesized waveform.
+
 - `AMP_RELEASE_MS` — duration of the amplitude envelope and therefore the sound.
 - `PITCH_DECAY_MS` — time taken by the pitch envelope to fall to the base
   frequency.
 - `MIN_VOLUME` — output level assigned to the weakest accepted hit.
 - `AMP_VELOCITY_AMOUNT` — influence of hit velocity on output amplitude;
   `0.0` disables the influence and `1.0` applies the full velocity range.
-- `PITCH_VELOCITY_AMOUNT` — influence of hit velocity on the starting pitch;
-  `0.0` keeps the full pitch sweep fixed and `1.0` makes it fully velocity
-  dependent.
+
+At each trigger, the A2 depth is mildly scaled from 65% to 100% by velocity.
+The resulting initial frequency is limited to 8 kHz, without limiting the base
+pitch selected by A1.
 
 Input-related defaults are stored in the `AppConfig::AudioInput` and
 `AppConfig::HitDetection` sections of the same file:
 
 - `AppConfig::AudioInput::CHANNEL` — selected LINE IN channel.
 - `AppConfig::AudioInput::GAIN_CODE` — ES8388 input PGA gain.
-- `AppConfig::HitDetection::MIN_HIT_PEAK` — trigger threshold.
-- `AppConfig::HitDetection::MAX_HIT_PEAK` — upper limit used when calculating
-  velocity.
+- `AppConfig::HitDetection::PAD_TRIGGER_THRESHOLD` — fixed trigger threshold.
+- `PAD_INPUT_MIN` and `PAD_INPUT_MAX` — programmed calibration points for
+  velocity mapping; neither is controlled by a potentiometer.
 
 ## Run
 

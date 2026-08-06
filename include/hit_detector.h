@@ -4,6 +4,6 @@
 
 namespace HitDetector {
 
-bool update(uint16_t peak, float& velocity);
+bool update(uint16_t peak);
 
 }  // namespace HitDetector

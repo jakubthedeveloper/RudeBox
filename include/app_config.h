@@ -17,10 +17,22 @@ constexpr uint8_t GAIN_CODE = 2;  // 0..4 maps to 0..12 dB in 3 dB steps.
 
 }  // namespace AudioInput
 
+namespace AudioOutput {
+
+// Preserve dynamics while leaving 6 dB of digital headroom before the codec.
+constexpr float MASTER_GAIN = 0.5f;
+
+// Final sample-peak safety limiter. The ceiling is relative to full scale.
+constexpr float LIMITER_CEILING = 0.8f;
+constexpr float LIMITER_RELEASE_MS = 50.0f;
+
+}  // namespace AudioOutput
+
 namespace HitDetection {
 
-constexpr uint16_t MIN_HIT_PEAK = 120;
-constexpr uint16_t MAX_HIT_PEAK = 3000;
+constexpr uint16_t PAD_INPUT_MIN = 120;
+constexpr uint16_t PAD_INPUT_MAX = 3000;
+constexpr uint16_t PAD_TRIGGER_THRESHOLD = 120;
 
 }  // namespace HitDetection
 
@@ -29,10 +41,6 @@ namespace Ui {
 constexpr uint8_t ADS7830_ADDRESS = 0x48;
 constexpr int ADS7830_SDA_PIN = 23;
 constexpr int ADS7830_SCL_PIN = 18;
-constexpr uint8_t POTENTIOMETER_COUNT = 1;
-constexpr uint8_t POTENTIOMETER_SAMPLES_PER_READING = 16;
-constexpr uint32_t POTENTIOMETER_REPORT_INTERVAL_MS = 1000;
-constexpr bool LOG_POTENTIOMETERS = true;
 
 constexpr int ACTIVITY_LED_PIN = 22;
 constexpr bool ACTIVITY_LED_ACTIVE_LOW = true;
@@ -40,16 +48,55 @@ constexpr uint32_t ACTIVITY_LED_PULSE_MS = 40;
 
 }  // namespace Ui
 
+// Potentiometer and control mapping values intended for hardware tuning.
+namespace Controls {
+
+// Potentiometer reading
+constexpr uint8_t POTENTIOMETER_COUNT = 3;
+constexpr uint8_t SENSITIVITY_CHANNEL = 0;
+constexpr uint8_t OSC_PITCH_CHANNEL = 1;
+constexpr uint8_t PITCH_DROP_CHANNEL = 2;
+constexpr bool INVERT_SENSITIVITY = false;
+constexpr bool INVERT_OSC_PITCH = false;
+constexpr bool INVERT_PITCH_DROP = false;
+constexpr uint32_t CONTROL_SCAN_INTERVAL_MS = 5;
+constexpr float POT_FILTER_ALPHA = 0.12f;
+constexpr uint8_t POT_CHANGE_THRESHOLD = 2;
+constexpr bool LOG_CONTROL_VALUES = false;
+constexpr uint32_t CONTROL_LOG_INTERVAL_MS = 100;
+
+// Sensitivity mapping
+constexpr float SENS_EFFECTIVE_MAX_LOW =
+    HitDetection::PAD_INPUT_MAX * 1.15f;
+constexpr float SENS_EFFECTIVE_MAX_HIGH =
+    HitDetection::PAD_INPUT_MAX * 0.82f;
+constexpr float SENS_CURVE_EXPONENT_LOW = 2.2f;
+constexpr float SENS_CURVE_EXPONENT_HIGH = 0.55f;
+
+// Oscillator pitch
+constexpr float OSC_PITCH_MIN_HZ = 45.0f;
+constexpr float OSC_PITCH_MAX_HZ = 1200.0f;
+constexpr float OSC_ABSOLUTE_MAX_HZ = 8000.0f;
+
+// Pitch envelope depth
+constexpr float PITCH_DROP_MIN_OCTAVES = 0.0f;
+constexpr float PITCH_DROP_MAX_OCTAVES = 4.5f;
+constexpr float PITCH_DROP_VELOCITY_MIN_SCALE = 0.65f;
+
+// Values used until the first successful scan of each control.
+constexpr float DEFAULT_SENSITIVITY = 0.5f;
+constexpr float DEFAULT_OSC_PITCH_HZ = 150.0f;
+constexpr float DEFAULT_PITCH_DROP_OCTAVES = 1.0f;
+
+}  // namespace Controls
+
 namespace Voice {
 
-constexpr float BASE_FREQUENCY_HZ = 120.0f;
-constexpr float PITCH_SWEEP_HZ = 220.0f;
 constexpr float AMP_RELEASE_MS = 300.0f;
 constexpr float PITCH_DECAY_MS = 190.0f;
 
 constexpr float MIN_VOLUME = 0.05f;
 constexpr float AMP_VELOCITY_AMOUNT = 1.0f;
-constexpr float PITCH_VELOCITY_AMOUNT = 0.7f;
 
 }  // namespace Voice
 

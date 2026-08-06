@@ -9,22 +9,14 @@ bool armed = true;
 
 }  // namespace
 
-bool update(uint16_t peak, float& velocity) {
-  if (peak < AppConfig::HitDetection::MIN_HIT_PEAK) {
+bool update(uint16_t peak) {
+  if (peak < AppConfig::HitDetection::PAD_TRIGGER_THRESHOLD) {
     armed = true;
     return false;
   }
   if (!armed) return false;
 
   armed = false;
-  const uint16_t limitedPeak =
-      peak > AppConfig::HitDetection::MAX_HIT_PEAK
-          ? AppConfig::HitDetection::MAX_HIT_PEAK
-          : peak;
-  velocity =
-      static_cast<float>(limitedPeak - AppConfig::HitDetection::MIN_HIT_PEAK) /
-      (AppConfig::HitDetection::MAX_HIT_PEAK -
-       AppConfig::HitDetection::MIN_HIT_PEAK);
   return true;
 }
 

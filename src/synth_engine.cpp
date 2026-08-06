@@ -5,6 +5,8 @@
 #include "app_config.h"
 #include "audio_io.h"
 #include "hit_detector.h"
+#include "output_limiter.h"
+#include "synth_controls.h"
 #include "synth_voice.h"
 
 namespace SynthEngine {
@@ -17,10 +19,13 @@ void reportInputPeak(uint16_t peak) {
 }
 
 bool triggerVoiceForDetectedPadHit(uint16_t peak) {
-  float velocity;
-  if (!HitDetector::update(peak, velocity)) return false;
+  if (!HitDetector::update(peak)) return false;
 
-  SynthVoice::trigger(velocity);
+  const SynthControls controls = SynthControlInput::snapshot();
+  const float velocity =
+      SynthControlInput::velocityFromPeak(peak, controls.sensitivity);
+  SynthVoice::trigger(velocity, controls.oscPitchHz,
+                      controls.pitchDropOctaves);
   return true;
 }
 
@@ -33,7 +38,8 @@ bool processAudioInput() {
 }
 
 void renderAudioOutput() {
-  AudioIo::write(SynthVoice::render());
+  const int16_t* synthesizedSamples = SynthVoice::render();
+  AudioIo::write(OutputLimiter::process(synthesizedSamples));
 }
 
 }  // namespace

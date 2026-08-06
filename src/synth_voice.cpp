@@ -24,6 +24,7 @@ struct VoiceState {
   uint32_t ampSamplesRemaining = 0;
   uint32_t pitchSamplesRemaining = 0;
   float peakAmplitude = 0.0f;
+  float baseFrequencyHz = AppConfig::Controls::DEFAULT_OSC_PITCH_HZ;
   float pitchOffsetHz = 0.0f;
   float phase = 0.0f;
 };
@@ -47,11 +48,17 @@ float calculatePeakAmplitude(float velocity) {
   return 32767.0f * amplitudeVelocity;
 }
 
-float calculatePitchOffset(float velocity) {
-  const float pitchVelocity =
-      (1.0f - AppConfig::Voice::PITCH_VELOCITY_AMOUNT) +
-      AppConfig::Voice::PITCH_VELOCITY_AMOUNT * velocity;
-  return AppConfig::Voice::PITCH_SWEEP_HZ * pitchVelocity;
+float calculateStartFrequency(float baseFrequencyHz, float pitchDropOctaves,
+                              float velocity) {
+  const float velocityPitchScale =
+      AppConfig::Controls::PITCH_DROP_VELOCITY_MIN_SCALE +
+      (1.0f - AppConfig::Controls::PITCH_DROP_VELOCITY_MIN_SCALE) * velocity;
+  const float effectivePitchDrop = pitchDropOctaves * velocityPitchScale;
+  const float startFrequency =
+      baseFrequencyHz * powf(2.0f, effectivePitchDrop);
+  return startFrequency < AppConfig::Controls::OSC_ABSOLUTE_MAX_HZ
+             ? startFrequency
+             : AppConfig::Controls::OSC_ABSOLUTE_MAX_HZ;
 }
 
 void restartVoice() {
@@ -69,8 +76,7 @@ float currentFrequency() {
       voice.pitchSamplesRemaining > 0
           ? envelopeLevel(voice.pitchSamplesRemaining, PITCH_DECAY_SAMPLES)
           : 0.0f;
-  return AppConfig::Voice::BASE_FREQUENCY_HZ +
-         voice.pitchOffsetHz * pitchEnvelope;
+  return voice.baseFrequencyHz + voice.pitchOffsetHz * pitchEnvelope;
 }
 
 int16_t generateCurrentSample() {
@@ -104,10 +110,14 @@ void writeStereoFrame(size_t frame, int16_t sample) {
 
 }  // namespace
 
-void trigger(float velocity) {
+void trigger(float velocity, float baseFrequencyHz, float pitchDropOctaves) {
   const float normalizedVelocity = clamp01(velocity);
   voice.peakAmplitude = calculatePeakAmplitude(normalizedVelocity);
-  voice.pitchOffsetHz = calculatePitchOffset(normalizedVelocity);
+  voice.baseFrequencyHz = baseFrequencyHz;
+  voice.pitchOffsetHz =
+      calculateStartFrequency(baseFrequencyHz, pitchDropOctaves,
+                              normalizedVelocity) -
+      baseFrequencyHz;
   restartVoice();
 }
 

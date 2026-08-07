@@ -6,13 +6,15 @@ V2.2 with the ESP32-A1S module and ES8388 audio codec.
 The firmware currently:
 
 - reads drum pad impulses from the right channel of ES8388 LINE IN,
-- accepts pad peaks at or above the fixed trigger threshold,
+- validates each trigger candidate from the shape of an eight-sample impulse
+  window and rejects isolated electrical spikes,
 - maps accepted peaks into normalized velocity using a sensitivity control,
 - triggers one monophonic synth-drum voice per hit,
 - generates a triangle waveform with amplitude and pitch envelopes,
 - applies output headroom and final brickwall limiting,
 - sends the synthesized mono signal to the left audio output,
-- streams the measured input peak to Teleplot as `>peak:<value>`,
+- streams the measured input peak and trigger-validation diagnostics to
+  Teleplot,
 - reads three potentiometers from an ADS7830 about every 5 ms,
 - briefly lights the activity LED after a drum-pad hit is detected.
 
@@ -26,8 +28,8 @@ processing details:
   passing the current UI control state to the synth engine.
 - `synth_engine.cpp` shows the complete synthesis path: read the pad input,
   detect and trigger a hit, render the voice, and write the output block.
-- `hit_detector.cpp` owns hit re-arming and maps accepted pad peaks to velocity
-  using the current sensitivity.
+- `hit_detector.cpp` owns the trigger-validation state, hit re-arming, and peak
+  to velocity mapping using the current sensitivity.
 - `synth_voice.cpp` defines the sound of one voice. Its public `trigger()` and
   `render()` functions delegate envelope, pitch, phase, and mono-buffer work
   to focused private helpers.
@@ -73,10 +75,10 @@ through a 1kΩ series resistor to its ADS7830 input:
 
 All channels are sampled every 5 ms. An EMA filter and a two-count dead zone
 stabilize the native 8-bit readings. Pitch uses exponential mapping, while
-pitch-drop uses a squared curve for finer control near zero. The fixed trigger
-threshold determines which peaks are accepted, and the sensitivity control maps
-accepted peaks to velocity. Every control maps a higher ADC reading to a higher
-control value.
+pitch-drop uses a squared curve for finer control near zero. Trigger acceptance
+is determined by the short impulse-shape window, and the sensitivity control
+maps the accepted window maximum to velocity. Every control maps a higher ADC
+reading to a higher control value.
 
 ### Activity LED
 
@@ -92,12 +94,25 @@ Serial output categories can be enabled independently in the
 `include/app_config.h`:
 
 - `AppConfig::Diagnostics::LOG_AUDIO_PEAKS` — streams ES8388 input peaks in
-  Teleplot format,
+  Teleplot format as `rawPeak`,
+- `AppConfig::Diagnostics::LOG_TRIGGER_VALIDATION` — reports
+  `triggerCandidate`, `triggerAccepted`, `validationMax`, `activeSamples`, and
+  `windowEnergy` when a candidate starts or a validation finishes,
 - `AppConfig::Controls::LOG_CONTROL_VALUES` — prints throttled raw, filtered,
   and mapped potentiometer values.
 
-Both diagnostic modes are disabled by default. Fatal initialization errors are
-always printed.
+Audio-peak and trigger-validation diagnostics are temporarily enabled by
+default for filter tuning. Validation details are event-driven rather than sent
+for every audio block, which limits their timing impact. Control logging remains
+disabled. Fatal initialization errors are always printed.
+
+For tuning, an isolated electrical spike should normally show
+`activeSamples:1` and `triggerAccepted:0`. A pad hit should retain at least two
+samples at or above the follow threshold and show `triggerAccepted:1`. Compare
+`validationMax` and `windowEnergy` for switch-on noise, switch-off noise, and
+light, medium, and strong hits before adjusting the thresholds. `windowEnergy`
+is diagnostic in this initial implementation; it is not part of the acceptance
+condition.
 
 ## Sound parameters
 
@@ -133,7 +148,16 @@ Input-related defaults are stored in the `AppConfig::AudioInput` and
 
 - `AppConfig::AudioInput::CHANNEL` — selected LINE IN channel.
 - `AppConfig::AudioInput::GAIN_CODE` — ES8388 input PGA gain.
-- `AppConfig::HitDetection::PAD_TRIGGER_THRESHOLD` — fixed trigger threshold.
+- `TRIGGER_PRE_THRESHOLD = 180` — starts validation when a magnitude reaches
+  this level.
+- `TRIGGER_VALIDATION_SAMPLES = 8` — window length, including the candidate
+  sample (about 0.18 ms at 44.1 kHz).
+- `TRIGGER_MIN_ACTIVE_SAMPLES = 2` — minimum number of samples needed to reject
+  the single-spike shape.
+- `TRIGGER_FOLLOW_THRESHOLD = 100` — magnitude at which a window sample counts
+  as active.
+- `TRIGGER_REARM_THRESHOLD = 120` — a complete input block must stay below this
+  value before another accepted hit can trigger the voice.
 - `PAD_INPUT_MIN` and `PAD_INPUT_MAX` — programmed calibration points for
   velocity mapping.
 - `VELOCITY_EFFECTIVE_MAX_*` and `VELOCITY_CURVE_*` — endpoints of the
@@ -152,14 +176,18 @@ pio run -t upload
 
 To use the serial output, select the board serial port and use `115200` baud.
 For Teleplot peak monitoring, enable
-`AppConfig::Diagnostics::LOG_AUDIO_PEAKS` first.
+`AppConfig::Diagnostics::LOG_AUDIO_PEAKS`. Keep
+`AppConfig::Diagnostics::LOG_TRIGGER_VALIDATION` enabled while tuning the
+filter, then disable either stream independently if it is no longer needed.
 
 ## Audio signal-path tests
 
 The native integration test exercises the complete hardware-independent audio
 path: a simulated pad impulse enters through the `AudioIo` boundary, then the
 real hit detector, synth voice, and output limiter generate the captured mono
-output. Three cases use weak, medium, and maximum pad peaks with sensitivity
+output. It verifies rejection of a single-sample spike, acceptance of a light
+pad tail, validation across an input-block boundary, and lockout behavior.
+Three additional cases use weak, medium, and maximum pad peaks with sensitivity
 `0.5`, oscillator pitch `150 Hz`, and pitch drop `1 octave`.
 
 Run the tests from the project root:

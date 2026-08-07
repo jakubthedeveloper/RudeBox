@@ -11,28 +11,49 @@
 namespace SynthEngine {
 namespace {
 
-void reportInputPeak(uint16_t peak) {
+AudioIo::MagnitudeBlock inputBlock;
+
+void reportInputPeak(const HitDetector::Result& result) {
   if (AppConfig::Diagnostics::LOG_AUDIO_PEAKS) {
-    Serial.printf(">peak:%u\n", peak);
+    Serial.printf(">rawPeak:%u\n", result.rawPeak);
   }
 }
 
-bool triggerVoiceForDetectedPadHit(uint16_t peak,
-                                   const SynthControls& controls) {
-  float velocity;
-  if (!HitDetector::detect(peak, controls.sensitivity, velocity)) return false;
+void reportTriggerValidation(const HitDetector::Result& result) {
+  if (!AppConfig::Diagnostics::LOG_TRIGGER_VALIDATION ||
+      (!result.candidateStarted && !result.validationCompleted)) {
+    return;
+  }
 
-  SynthVoice::trigger(velocity, controls.oscPitchHz,
+  Serial.printf(">triggerCandidate:%u\n"
+                ">triggerAccepted:%u\n"
+                ">validationMax:%u\n"
+                ">activeSamples:%u\n"
+                ">windowEnergy:%lu\n",
+                result.candidateStarted, result.hitDetected,
+                result.validationMax, result.activeSamples,
+                static_cast<unsigned long>(result.windowEnergy));
+}
+
+bool triggerVoiceForDetectedPadHit(const HitDetector::Result& result,
+                                   const SynthControls& controls) {
+  if (!result.hitDetected) return false;
+
+  SynthVoice::trigger(result.velocity, controls.oscPitchHz,
                       controls.pitchDropOctaves);
   return true;
 }
 
 bool processAudioInput(const SynthControls& controls) {
-  uint16_t peak;
-  if (!AudioIo::readPeak(AppConfig::AudioInput::CHANNEL, peak)) return false;
+  if (!AudioIo::readMagnitudeBlock(AppConfig::AudioInput::CHANNEL, inputBlock)) {
+    return false;
+  }
 
-  reportInputPeak(peak);
-  return triggerVoiceForDetectedPadHit(peak, controls);
+  const HitDetector::Result result = HitDetector::process(
+      inputBlock.samples, inputBlock.sampleCount, controls.sensitivity);
+  reportInputPeak(result);
+  reportTriggerValidation(result);
+  return triggerVoiceForDetectedPadHit(result, controls);
 }
 
 void renderAudioOutput() {

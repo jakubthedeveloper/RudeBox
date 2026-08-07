@@ -10,8 +10,13 @@ constexpr size_t BLOCK_FRAMES = 256;
 
 enum class Channel : uint8_t { Left, Right };
 
+struct MagnitudeBlock {
+  uint16_t samples[BLOCK_FRAMES];
+  size_t sampleCount;
+};
+
 bool begin();
-bool readPeak(Channel channel, uint16_t& peak);
+bool readMagnitudeBlock(Channel channel, MagnitudeBlock& block);
 
 // Writes one mono block to the left audio output. The right output stays silent.
 bool writeMono(const int16_t* samples);

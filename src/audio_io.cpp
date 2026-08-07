@@ -51,7 +51,7 @@ bool begin() {
   return false;
 }
 
-bool readPeak(Channel channel, uint16_t& peak) {
+bool readMagnitudeBlock(Channel channel, MagnitudeBlock& block) {
   size_t bytesRead = 0;
   if (i2s_read(PORT, inputBuffer, sizeof(inputBuffer), &bytesRead,
                pdMS_TO_TICKS(100)) != ESP_OK) {
@@ -62,11 +62,10 @@ bool readPeak(Channel channel, uint16_t& peak) {
   if (frames == 0) return false;
 
   const size_t slot = channel == Channel::Left ? LEFT_SLOT : RIGHT_SLOT;
-  peak = 0;
+  block.sampleCount = frames;
   for (size_t frame = 0; frame < frames; ++frame) {
-    const uint16_t value =
+    block.samples[frame] =
         magnitude(inputBuffer[frame * I2S_CHANNEL_COUNT + slot]);
-    if (value > peak) peak = value;
   }
   return true;
 }

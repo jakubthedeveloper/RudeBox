@@ -8,7 +8,7 @@
 
 namespace {
 
-std::deque<uint16_t> inputPeaks;
+std::deque<std::vector<uint16_t>> inputBlocks;
 std::vector<int16_t> outputSamples;
 
 }  // namespace
@@ -16,11 +16,19 @@ std::vector<int16_t> outputSamples;
 namespace FakeAudioIo {
 
 void reset() {
-  inputPeaks.clear();
+  inputBlocks.clear();
   outputSamples.clear();
 }
 
-void simulatePadImpulse(uint16_t peak) { inputPeaks.push_back(peak); }
+void simulatePadImpulse(uint16_t peak) {
+  std::vector<uint16_t> magnitudes(AudioIo::BLOCK_FRAMES, 0);
+  magnitudes[0] = peak;
+  magnitudes[1] = static_cast<uint16_t>(peak * 65U / 100U);
+  magnitudes[2] = static_cast<uint16_t>(peak * 35U / 100U);
+  magnitudes[3] = static_cast<uint16_t>(peak * 20U / 100U);
+  magnitudes[4] = static_cast<uint16_t>(peak * 12U / 100U);
+  inputBlocks.push_back(magnitudes);
+}
 
 const std::vector<int16_t>& writtenSamples() { return outputSamples; }
 
@@ -30,14 +38,23 @@ namespace AudioIo {
 
 bool begin() { return true; }
 
-bool readPeak(Channel, uint16_t& peak) {
-  if (inputPeaks.empty()) {
-    peak = 0;
+bool readMagnitudeBlock(Channel, MagnitudeBlock& block) {
+  block.sampleCount = BLOCK_FRAMES;
+  for (size_t index = 0; index < BLOCK_FRAMES; ++index) {
+    block.samples[index] = 0;
+  }
+
+  if (inputBlocks.empty()) {
     return true;
   }
 
-  peak = inputPeaks.front();
-  inputPeaks.pop_front();
+  const std::vector<uint16_t>& magnitudes = inputBlocks.front();
+  const size_t samplesToCopy =
+      magnitudes.size() < BLOCK_FRAMES ? magnitudes.size() : BLOCK_FRAMES;
+  for (size_t index = 0; index < samplesToCopy; ++index) {
+    block.samples[index] = magnitudes[index];
+  }
+  inputBlocks.pop_front();
   return true;
 }
 

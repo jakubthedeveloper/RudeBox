@@ -8,6 +8,7 @@
 #include "app_config.h"
 #include "audio_io.h"
 #include "audio_io_fake.h"
+#include "hit_detector.h"
 #include "synth_controls.h"
 #include "synth_engine.h"
 #include "waveform_svg.h"
@@ -43,6 +44,12 @@ struct RenderResult {
   std::vector<int16_t> outputSamples;
 };
 
+void resetHitDetector() {
+  const std::vector<uint16_t> quietBlock(AudioIo::BLOCK_FRAMES, 0);
+  HitDetector::process(quietBlock.data(), quietBlock.size(),
+                       TEST_CONTROLS.sensitivity);
+}
+
 std::filesystem::path artifactDirectory() {
   return std::filesystem::path(__FILE__).parent_path().parent_path() /
          "artifacts";
@@ -57,9 +64,7 @@ std::filesystem::path artifactPath(const HitScenario& scenario) {
 RenderResult renderPadHit(const HitScenario& scenario) {
   // A quiet input block establishes the real detector's armed baseline and
   // makes every scenario independent from the preceding test.
-  FakeAudioIo::reset();
-  SynthEngine::processAudioBlock(TEST_CONTROLS);
-
+  resetHitDetector();
   FakeAudioIo::reset();
   FakeAudioIo::simulatePadImpulse(scenario.inputPeak);
 
@@ -139,6 +144,82 @@ void testMaximumPadHit() {
       {"maximum", "Audio path - maximum pad hit", 3000, 15500, 16500});
 }
 
+void testSingleSampleElectricalSpikeIsRejected() {
+  resetHitDetector();
+  std::vector<uint16_t> magnitudes(AudioIo::BLOCK_FRAMES, 0);
+  magnitudes[20] = 3000;
+
+  const HitDetector::Result result = HitDetector::process(
+      magnitudes.data(), magnitudes.size(), TEST_CONTROLS.sensitivity);
+
+  TEST_ASSERT_TRUE(result.candidateStarted);
+  TEST_ASSERT_TRUE(result.validationCompleted);
+  TEST_ASSERT_FALSE(result.hitDetected);
+  TEST_ASSERT_EQUAL_UINT16(3000, result.validationMax);
+  TEST_ASSERT_EQUAL_UINT8(1, result.activeSamples);
+  TEST_ASSERT_EQUAL_UINT32(3000, result.windowEnergy);
+}
+
+void testLightPadTailIsAccepted() {
+  resetHitDetector();
+  std::vector<uint16_t> magnitudes(AudioIo::BLOCK_FRAMES, 0);
+  magnitudes[20] = 180;
+  magnitudes[21] = 420;
+  magnitudes[22] = 250;
+  magnitudes[23] = 130;
+  magnitudes[24] = 80;
+  magnitudes[25] = 40;
+
+  const HitDetector::Result result = HitDetector::process(
+      magnitudes.data(), magnitudes.size(), TEST_CONTROLS.sensitivity);
+
+  TEST_ASSERT_TRUE(result.candidateStarted);
+  TEST_ASSERT_TRUE(result.validationCompleted);
+  TEST_ASSERT_TRUE(result.hitDetected);
+  TEST_ASSERT_EQUAL_UINT16(420, result.validationMax);
+  TEST_ASSERT_EQUAL_UINT8(4, result.activeSamples);
+  TEST_ASSERT_EQUAL_UINT32(1100, result.windowEnergy);
+}
+
+void testValidationContinuesAcrossInputBlocks() {
+  resetHitDetector();
+  std::vector<uint16_t> firstBlock(AudioIo::BLOCK_FRAMES, 0);
+  firstBlock.back() = 420;
+
+  const HitDetector::Result firstResult = HitDetector::process(
+      firstBlock.data(), firstBlock.size(), TEST_CONTROLS.sensitivity);
+  TEST_ASSERT_TRUE(firstResult.candidateStarted);
+  TEST_ASSERT_FALSE(firstResult.validationCompleted);
+  TEST_ASSERT_FALSE(firstResult.hitDetected);
+
+  std::vector<uint16_t> secondBlock(AudioIo::BLOCK_FRAMES, 0);
+  secondBlock[0] = 250;
+  secondBlock[1] = 130;
+  secondBlock[2] = 80;
+  secondBlock[3] = 40;
+  const HitDetector::Result secondResult = HitDetector::process(
+      secondBlock.data(), secondBlock.size(), TEST_CONTROLS.sensitivity);
+
+  TEST_ASSERT_TRUE(secondResult.validationCompleted);
+  TEST_ASSERT_TRUE(secondResult.hitDetected);
+  TEST_ASSERT_EQUAL_UINT16(420, secondResult.validationMax);
+  TEST_ASSERT_EQUAL_UINT8(3, secondResult.activeSamples);
+}
+
+void testAcceptedHitStaysLockedOutUntilQuietBlock() {
+  resetHitDetector();
+  FakeAudioIo::reset();
+  FakeAudioIo::simulatePadImpulse(600);
+  TEST_ASSERT_TRUE(SynthEngine::processAudioBlock(TEST_CONTROLS));
+
+  FakeAudioIo::simulatePadImpulse(500);
+  TEST_ASSERT_FALSE(SynthEngine::processAudioBlock(TEST_CONTROLS));
+  TEST_ASSERT_FALSE(SynthEngine::processAudioBlock(TEST_CONTROLS));
+
+  FakeAudioIo::simulatePadImpulse(500);
+  TEST_ASSERT_TRUE(SynthEngine::processAudioBlock(TEST_CONTROLS));
+}
+
 }  // namespace
 
 void setUp() {}
@@ -147,6 +228,10 @@ void tearDown() {}
 
 int main(int, char**) {
   UNITY_BEGIN();
+  RUN_TEST(testSingleSampleElectricalSpikeIsRejected);
+  RUN_TEST(testLightPadTailIsAccepted);
+  RUN_TEST(testValidationContinuesAcrossInputBlocks);
+  RUN_TEST(testAcceptedHitStaysLockedOutUntilQuietBlock);
   RUN_TEST(testWeakPadHit);
   RUN_TEST(testMediumPadHit);
   RUN_TEST(testMaximumPadHit);

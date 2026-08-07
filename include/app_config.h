@@ -7,6 +7,7 @@ namespace AppConfig {
 namespace Diagnostics {
 
 constexpr bool LOG_AUDIO_PEAKS = true;
+constexpr bool LOG_TRIGGER_VALIDATION = true;
 
 }  // namespace Diagnostics
 
@@ -32,7 +33,13 @@ namespace HitDetection {
 
 constexpr uint16_t PAD_INPUT_MIN = 120;
 constexpr uint16_t PAD_INPUT_MAX = 3000;
-constexpr uint16_t PAD_TRIGGER_THRESHOLD = 120;
+
+// Trigger-shape filter. The validation window includes the candidate sample.
+constexpr uint16_t TRIGGER_PRE_THRESHOLD = 180;
+constexpr uint8_t TRIGGER_VALIDATION_SAMPLES = 8;
+constexpr uint8_t TRIGGER_MIN_ACTIVE_SAMPLES = 8;
+constexpr uint16_t TRIGGER_FOLLOW_THRESHOLD = 100;
+constexpr uint16_t TRIGGER_REARM_THRESHOLD = 120;
 
 constexpr float VELOCITY_EFFECTIVE_MAX_AT_MIN_SENSITIVITY =
     PAD_INPUT_MAX * 1.15f;

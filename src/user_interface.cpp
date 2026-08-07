@@ -3,7 +3,7 @@
 #include <Arduino.h>
 
 #include "app_config.h"
-#include "synth_controls.h"
+#include "synth_control_input.h"
 
 namespace UserInterface {
 namespace {
@@ -48,5 +48,7 @@ void update() {
   updateActivityLed(now);
   SynthControlInput::update();
 }
+
+SynthControls synthControls() { return SynthControlInput::snapshot(); }
 
 }  // namespace UserInterface

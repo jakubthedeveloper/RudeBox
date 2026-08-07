@@ -34,6 +34,13 @@ constexpr uint16_t PAD_INPUT_MIN = 120;
 constexpr uint16_t PAD_INPUT_MAX = 3000;
 constexpr uint16_t PAD_TRIGGER_THRESHOLD = 120;
 
+constexpr float VELOCITY_EFFECTIVE_MAX_AT_MIN_SENSITIVITY =
+    PAD_INPUT_MAX * 1.15f;
+constexpr float VELOCITY_EFFECTIVE_MAX_AT_MAX_SENSITIVITY =
+    PAD_INPUT_MAX * 0.82f;
+constexpr float VELOCITY_CURVE_AT_MIN_SENSITIVITY = 2.2f;
+constexpr float VELOCITY_CURVE_AT_MAX_SENSITIVITY = 0.55f;
+
 }  // namespace HitDetection
 
 namespace Ui {
@@ -65,23 +72,13 @@ constexpr uint8_t POT_CHANGE_THRESHOLD = 2;
 constexpr bool LOG_CONTROL_VALUES = false;
 constexpr uint32_t CONTROL_LOG_INTERVAL_MS = 100;
 
-// Sensitivity mapping
-constexpr float SENS_EFFECTIVE_MAX_LOW =
-    HitDetection::PAD_INPUT_MAX * 1.15f;
-constexpr float SENS_EFFECTIVE_MAX_HIGH =
-    HitDetection::PAD_INPUT_MAX * 0.82f;
-constexpr float SENS_CURVE_EXPONENT_LOW = 2.2f;
-constexpr float SENS_CURVE_EXPONENT_HIGH = 0.55f;
-
 // Oscillator pitch
 constexpr float OSC_PITCH_MIN_HZ = 45.0f;
 constexpr float OSC_PITCH_MAX_HZ = 1200.0f;
-constexpr float OSC_ABSOLUTE_MAX_HZ = 8000.0f;
 
 // Pitch envelope depth
 constexpr float PITCH_DROP_MIN_OCTAVES = 0.0f;
 constexpr float PITCH_DROP_MAX_OCTAVES = 4.5f;
-constexpr float PITCH_DROP_VELOCITY_MIN_SCALE = 0.65f;
 
 // Values used until the first successful scan of each control.
 constexpr float DEFAULT_SENSITIVITY = 0.5f;
@@ -97,6 +94,8 @@ constexpr float PITCH_DECAY_MS = 190.0f;
 
 constexpr float MIN_VOLUME = 0.05f;
 constexpr float AMP_VELOCITY_AMOUNT = 1.0f;
+constexpr float MAX_START_FREQUENCY_HZ = 8000.0f;
+constexpr float PITCH_DROP_VELOCITY_MIN_SCALE = 0.65f;
 
 }  // namespace Voice
 

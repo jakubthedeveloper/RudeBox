@@ -22,20 +22,26 @@ The firmware is organized from general application flow to hardware and signal
 processing details:
 
 - `main.cpp` only enters `Application::begin()` and `Application::update()`.
-- `application.cpp` coordinates the audio path and user interface.
+- `application.cpp` coordinates the audio path and user interface, explicitly
+  passing the current UI control state to the synth engine.
 - `synth_engine.cpp` shows the complete synthesis path: read the pad input,
   detect and trigger a hit, render the voice, and write the output block.
+- `hit_detector.cpp` owns hit re-arming and maps accepted pad peaks to velocity
+  using the current sensitivity.
 - `synth_voice.cpp` defines the sound of one voice. Its public `trigger()` and
   `render()` functions delegate envelope, pitch, phase, and stereo-buffer work
   to focused private helpers.
-- `synth_controls.cpp` scans and filters the three potentiometers, maps their
-  positions to synth parameters, and owns the single pad-peak-to-velocity
-  mapping.
+- `synth_controls.h` defines the hardware-independent runtime control values.
+- `synth_control_input.cpp` scans and filters the potentiometers, maps their
+  positions to runtime controls, and contains control-input diagnostics.
 - `output_limiter.cpp` applies the final master gain and a block-lookahead
   sample-peak limiter before samples are sent to I2S.
 - `waveforms.cpp` owns the reusable waveform generator; it is independent of a
   particular synth voice.
-- `user_interface.cpp` owns potentiometer polling, UI logging, and LED timing.
+- `math_utils.cpp` owns small reusable numeric helpers shared across domains.
+- `user_interface.cpp` owns the UI lifecycle and exposes current synth controls;
+  it delegates potentiometer details to `synth_control_input.cpp` and owns LED
+  timing directly.
 - `audio_io.cpp`, `ads7830.cpp`, and `es8388.cpp` contain hardware-level details.
 
 ## User interface
@@ -94,10 +100,11 @@ always printed.
 
 ## Sound parameters
 
-Envelope and amplitude parameters are compile-time defaults in the
+Envelope, amplitude, and pitch-envelope behavior are configured in the
 `AppConfig::Voice` section of `include/app_config.h`. Potentiometer scanning,
-mapping ranges, curves, channel inversion, and initial control values are kept
-together in `AppConfig::Controls` for hardware tuning.
+physical control ranges, channel inversion, and initial control values are kept
+in `AppConfig::Controls` for hardware tuning. Pad triggering and sensitivity
+response curves are configured in `AppConfig::HitDetection`.
 
 The final output stage is configured in `AppConfig::AudioOutput`. It applies a
 master gain of `0.5` (about -6 dB), then protects the codec input with a
@@ -111,6 +118,10 @@ dynamics instead of simply clipping the synthesized waveform.
 - `MIN_VOLUME` — output level assigned to the weakest accepted hit.
 - `AMP_VELOCITY_AMOUNT` — influence of hit velocity on output amplitude;
   `0.0` disables the influence and `1.0` applies the full velocity range.
+- `PITCH_DROP_VELOCITY_MIN_SCALE` — minimum share of the selected pitch drop
+  applied to low-velocity hits.
+- `MAX_START_FREQUENCY_HZ` — upper limit for the initial pitch-envelope
+  frequency.
 
 At each trigger, the A2 depth is mildly scaled from 65% to 100% by velocity.
 The resulting initial frequency is limited to 8 kHz, without limiting the base
@@ -124,6 +135,8 @@ Input-related defaults are stored in the `AppConfig::AudioInput` and
 - `AppConfig::HitDetection::PAD_TRIGGER_THRESHOLD` — fixed trigger threshold.
 - `PAD_INPUT_MIN` and `PAD_INPUT_MAX` — programmed calibration points for
   velocity mapping; neither is controlled by a potentiometer.
+- `VELOCITY_EFFECTIVE_MAX_*` and `VELOCITY_CURVE_*` — endpoints of the
+  sensitivity-dependent velocity response.
 
 ## Run
 

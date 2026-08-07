@@ -4,6 +4,7 @@
 
 #include "app_config.h"
 #include "audio_io.h"
+#include "math_utils.h"
 #include "waveforms.h"
 
 namespace SynthVoice {
@@ -24,19 +25,13 @@ struct VoiceState {
   uint32_t ampSamplesRemaining = 0;
   uint32_t pitchSamplesRemaining = 0;
   float peakAmplitude = 0.0f;
-  float baseFrequencyHz = AppConfig::Controls::DEFAULT_OSC_PITCH_HZ;
+  float baseFrequencyHz = 0.0f;
   float pitchOffsetHz = 0.0f;
   float phase = 0.0f;
 };
 
 int16_t outputBuffer[AudioIo::BLOCK_FRAMES * 2];
 VoiceState voice;
-
-float clamp01(float value) {
-  if (value < 0.0f) return 0.0f;
-  if (value > 1.0f) return 1.0f;
-  return value;
-}
 
 float calculatePeakAmplitude(float velocity) {
   const float audibleVelocity =
@@ -48,17 +43,19 @@ float calculatePeakAmplitude(float velocity) {
   return 32767.0f * amplitudeVelocity;
 }
 
-float calculateStartFrequency(float baseFrequencyHz, float pitchDropOctaves,
-                              float velocity) {
+float calculatePitchOffset(float baseFrequencyHz, float pitchDropOctaves,
+                           float velocity) {
   const float velocityPitchScale =
-      AppConfig::Controls::PITCH_DROP_VELOCITY_MIN_SCALE +
-      (1.0f - AppConfig::Controls::PITCH_DROP_VELOCITY_MIN_SCALE) * velocity;
+      MathUtils::lerp(AppConfig::Voice::PITCH_DROP_VELOCITY_MIN_SCALE, 1.0f,
+                      velocity);
   const float effectivePitchDrop = pitchDropOctaves * velocityPitchScale;
   const float startFrequency =
       baseFrequencyHz * powf(2.0f, effectivePitchDrop);
-  return startFrequency < AppConfig::Controls::OSC_ABSOLUTE_MAX_HZ
-             ? startFrequency
-             : AppConfig::Controls::OSC_ABSOLUTE_MAX_HZ;
+  const float limitedStartFrequency =
+      startFrequency < AppConfig::Voice::MAX_START_FREQUENCY_HZ
+          ? startFrequency
+          : AppConfig::Voice::MAX_START_FREQUENCY_HZ;
+  return limitedStartFrequency - baseFrequencyHz;
 }
 
 void restartVoice() {
@@ -111,13 +108,11 @@ void writeStereoFrame(size_t frame, int16_t sample) {
 }  // namespace
 
 void trigger(float velocity, float baseFrequencyHz, float pitchDropOctaves) {
-  const float normalizedVelocity = clamp01(velocity);
+  const float normalizedVelocity = MathUtils::clamp01(velocity);
   voice.peakAmplitude = calculatePeakAmplitude(normalizedVelocity);
   voice.baseFrequencyHz = baseFrequencyHz;
-  voice.pitchOffsetHz =
-      calculateStartFrequency(baseFrequencyHz, pitchDropOctaves,
-                              normalizedVelocity) -
-      baseFrequencyHz;
+  voice.pitchOffsetHz = calculatePitchOffset(
+      baseFrequencyHz, pitchDropOctaves, normalizedVelocity);
   restartVoice();
 }
 

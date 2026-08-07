@@ -6,7 +6,6 @@
 #include "audio_io.h"
 #include "hit_detector.h"
 #include "output_limiter.h"
-#include "synth_controls.h"
 #include "synth_voice.h"
 
 namespace SynthEngine {
@@ -18,23 +17,22 @@ void reportInputPeak(uint16_t peak) {
   }
 }
 
-bool triggerVoiceForDetectedPadHit(uint16_t peak) {
-  if (!HitDetector::update(peak)) return false;
+bool triggerVoiceForDetectedPadHit(uint16_t peak,
+                                   const SynthControls& controls) {
+  float velocity;
+  if (!HitDetector::detect(peak, controls.sensitivity, velocity)) return false;
 
-  const SynthControls controls = SynthControlInput::snapshot();
-  const float velocity =
-      SynthControlInput::velocityFromPeak(peak, controls.sensitivity);
   SynthVoice::trigger(velocity, controls.oscPitchHz,
                       controls.pitchDropOctaves);
   return true;
 }
 
-bool processAudioInput() {
+bool processAudioInput(const SynthControls& controls) {
   uint16_t peak;
   if (!AudioIo::readPeak(AppConfig::AudioInput::CHANNEL, peak)) return false;
 
   reportInputPeak(peak);
-  return triggerVoiceForDetectedPadHit(peak);
+  return triggerVoiceForDetectedPadHit(peak, controls);
 }
 
 void renderAudioOutput() {
@@ -44,8 +42,8 @@ void renderAudioOutput() {
 
 }  // namespace
 
-bool processAudioBlock() {
-  const bool padHitDetected = processAudioInput();
+bool processAudioBlock(const SynthControls& controls) {
+  const bool padHitDetected = processAudioInput(controls);
   renderAudioOutput();
   return padHitDetected;
 }

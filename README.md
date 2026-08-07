@@ -149,3 +149,23 @@ pio run -t upload
 To use the serial output, select the board serial port and use `115200` baud.
 For Teleplot peak monitoring, enable
 `AppConfig::Diagnostics::LOG_AUDIO_PEAKS` first.
+
+## Audio signal-path tests
+
+The native integration test exercises the complete hardware-independent audio
+path: a simulated pad impulse enters through the `AudioIo` boundary, then the
+real hit detector, synth voice, and output limiter generate the captured stereo
+output. Three cases use weak, medium, and maximum pad peaks with sensitivity
+`0.5`, oscillator pitch `150 Hz`, and pitch drop `1 octave`.
+
+Run the tests from the project root:
+
+```sh
+pio test -e native
+```
+
+Each executed scenario writes a self-contained SVG waveform plot to
+`test/artifacts/`. Filenames contain both the hit strength and simulated input
+peak, for example `audio_path_weak_pad_hit_peak_300.svg`. The plots include the
+input peak, synthesis parameters, output peak, normalized amplitude, and time
+axis. They are regenerated and overwritten on every test run.

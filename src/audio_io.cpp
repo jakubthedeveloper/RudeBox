@@ -7,8 +7,12 @@ namespace AudioIo {
 namespace {
 
 constexpr i2s_port_t PORT = I2S_NUM_0;
+constexpr size_t I2S_CHANNEL_COUNT = 2;
+constexpr size_t LEFT_SLOT = 0;
+constexpr size_t RIGHT_SLOT = 1;
 
-int16_t inputBuffer[BLOCK_FRAMES * 2];
+int16_t inputBuffer[BLOCK_FRAMES * I2S_CHANNEL_COUNT];
+int16_t outputBuffer[BLOCK_FRAMES * I2S_CHANNEL_COUNT];
 
 uint16_t magnitude(int16_t sample) {
   const int32_t value = sample;
@@ -54,22 +58,28 @@ bool readPeak(Channel channel, uint16_t& peak) {
     return false;
   }
 
-  const size_t frames = bytesRead / (2 * sizeof(int16_t));
+  const size_t frames = bytesRead / (I2S_CHANNEL_COUNT * sizeof(int16_t));
   if (frames == 0) return false;
 
-  const size_t slot = channel == Channel::Left ? 0 : 1;
+  const size_t slot = channel == Channel::Left ? LEFT_SLOT : RIGHT_SLOT;
   peak = 0;
   for (size_t frame = 0; frame < frames; ++frame) {
-    const uint16_t value = magnitude(inputBuffer[frame * 2 + slot]);
+    const uint16_t value =
+        magnitude(inputBuffer[frame * I2S_CHANNEL_COUNT + slot]);
     if (value > peak) peak = value;
   }
   return true;
 }
 
-bool write(const int16_t* stereoSamples) {
+bool writeMono(const int16_t* samples) {
+  for (size_t frame = 0; frame < BLOCK_FRAMES; ++frame) {
+    outputBuffer[frame * I2S_CHANNEL_COUNT + LEFT_SLOT] = samples[frame];
+    outputBuffer[frame * I2S_CHANNEL_COUNT + RIGHT_SLOT] = 0;
+  }
+
   size_t bytesWritten = 0;
-  constexpr size_t bytesToWrite = BLOCK_FRAMES * 2 * sizeof(int16_t);
-  return i2s_write(PORT, stereoSamples, bytesToWrite, &bytesWritten,
+  constexpr size_t bytesToWrite = sizeof(outputBuffer);
+  return i2s_write(PORT, outputBuffer, bytesToWrite, &bytesWritten,
                    pdMS_TO_TICKS(100)) == ESP_OK &&
          bytesWritten == bytesToWrite;
 }

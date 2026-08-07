@@ -30,7 +30,7 @@ struct VoiceState {
   float phase = 0.0f;
 };
 
-int16_t outputBuffer[AudioIo::BLOCK_FRAMES * 2];
+int16_t outputBuffer[AudioIo::BLOCK_FRAMES];
 VoiceState voice;
 
 float calculatePeakAmplitude(float velocity) {
@@ -100,11 +100,6 @@ int16_t renderSample() {
   return sample;
 }
 
-void writeStereoFrame(size_t frame, int16_t sample) {
-  outputBuffer[frame * 2] = sample;
-  outputBuffer[frame * 2 + 1] = sample;
-}
-
 }  // namespace
 
 void trigger(float velocity, float baseFrequencyHz, float pitchDropOctaves) {
@@ -118,7 +113,7 @@ void trigger(float velocity, float baseFrequencyHz, float pitchDropOctaves) {
 
 const int16_t* render() {
   for (size_t frame = 0; frame < AudioIo::BLOCK_FRAMES; ++frame) {
-    writeStereoFrame(frame, renderSample());
+    outputBuffer[frame] = renderSample();
   }
   return outputBuffer;
 }

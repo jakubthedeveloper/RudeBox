@@ -37,7 +37,7 @@ bool processAudioInput(const SynthControls& controls) {
 
 void renderAudioOutput() {
   const int16_t* synthesizedSamples = SynthVoice::render();
-  AudioIo::write(OutputLimiter::process(synthesizedSamples));
+  AudioIo::writeMono(OutputLimiter::process(synthesizedSamples));
 }
 
 }  // namespace

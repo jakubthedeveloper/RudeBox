@@ -40,8 +40,7 @@ struct HitScenario {
 struct RenderResult {
   bool hitDetected;
   bool unexpectedRetrigger;
-  bool stereoOutputMatches;
-  std::vector<int16_t> leftSamples;
+  std::vector<int16_t> outputSamples;
 };
 
 std::filesystem::path artifactDirectory() {
@@ -75,8 +74,7 @@ RenderResult renderPadHit(const HitScenario& scenario) {
   return {
       hitDetected,
       unexpectedRetrigger,
-      FakeAudioIo::stereoOutputMatches(),
-      FakeAudioIo::writtenLeftSamples(),
+      FakeAudioIo::writtenSamples(),
   };
 }
 
@@ -107,20 +105,18 @@ void writeArtifact(const HitScenario& scenario,
 
 void verifyAudioPath(const HitScenario& scenario) {
   const RenderResult result = renderPadHit(scenario);
-  writeArtifact(scenario, result.leftSamples);
+  writeArtifact(scenario, result.outputSamples);
 
   TEST_ASSERT_TRUE_MESSAGE(result.hitDetected,
                            "The simulated pad impulse did not trigger a hit");
   TEST_ASSERT_FALSE_MESSAGE(
       result.unexpectedRetrigger,
       "One pad impulse triggered the voice more than once");
-  TEST_ASSERT_TRUE_MESSAGE(result.stereoOutputMatches,
-                           "Left and right output channels differ");
   TEST_ASSERT_EQUAL_UINT32(RENDER_BLOCK_COUNT * AudioIo::BLOCK_FRAMES,
-                           result.leftSamples.size());
-  TEST_ASSERT_EQUAL_INT16(0, result.leftSamples.back());
+                           result.outputSamples.size());
+  TEST_ASSERT_EQUAL_INT16(0, result.outputSamples.back());
 
-  const int16_t outputPeak = findOutputPeak(result.leftSamples);
+  const int16_t outputPeak = findOutputPeak(result.outputSamples);
   TEST_ASSERT_TRUE_MESSAGE(
       outputPeak >= scenario.minimumExpectedOutputPeak,
       "Output peak is lower than expected for this hit strength");

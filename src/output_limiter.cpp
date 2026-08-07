@@ -6,7 +6,7 @@
 namespace OutputLimiter {
 namespace {
 
-constexpr size_t SAMPLE_COUNT = AudioIo::BLOCK_FRAMES * 2;
+constexpr size_t SAMPLE_COUNT = AudioIo::BLOCK_FRAMES;
 constexpr float FULL_SCALE = 32767.0f;
 constexpr int32_t CEILING_SAMPLE = static_cast<int32_t>(
     FULL_SCALE * AppConfig::AudioOutput::LIMITER_CEILING);

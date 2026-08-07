@@ -12,6 +12,8 @@ enum class Channel : uint8_t { Left, Right };
 
 bool begin();
 bool readPeak(Channel channel, uint16_t& peak);
-bool write(const int16_t* stereoSamples);
+
+// Writes one mono block to the left audio output. The right output stays silent.
+bool writeMono(const int16_t* samples);
 
 }  // namespace AudioIo

@@ -51,7 +51,7 @@ void logControlValues(uint32_t now);
 void updatePotentiometer(uint8_t channel, SynthControls& nextControls);
 void applyMappedValue(uint8_t channel, float filteredValue,
                       SynthControls& nextControls);
-float normalizedKnob(float filteredValue, bool invert);
+float normalizedKnob(float filteredValue);
 float mapOscPitch(float knob);
 float mapPitchDrop(float knob);
 
@@ -134,24 +134,20 @@ void applyMappedValue(uint8_t channel, float filteredValue,
                       SynthControls& nextControls) {
   switch (channel) {
     case AppConfig::Controls::SENSITIVITY_CHANNEL:
-      nextControls.sensitivity = normalizedKnob(
-          filteredValue, AppConfig::Controls::INVERT_SENSITIVITY);
+      nextControls.sensitivity = normalizedKnob(filteredValue);
       break;
     case AppConfig::Controls::OSC_PITCH_CHANNEL:
-      nextControls.oscPitchHz = mapOscPitch(normalizedKnob(
-          filteredValue, AppConfig::Controls::INVERT_OSC_PITCH));
+      nextControls.oscPitchHz = mapOscPitch(normalizedKnob(filteredValue));
       break;
     case AppConfig::Controls::PITCH_DROP_CHANNEL:
-      nextControls.pitchDropOctaves = mapPitchDrop(normalizedKnob(
-          filteredValue, AppConfig::Controls::INVERT_PITCH_DROP));
+      nextControls.pitchDropOctaves =
+          mapPitchDrop(normalizedKnob(filteredValue));
       break;
   }
 }
 
-float normalizedKnob(float filteredValue, bool invert) {
-  float knob = MathUtils::clamp01(filteredValue / 255.0f);
-  if (invert) knob = 1.0f - knob;
-  return knob;
+float normalizedKnob(float filteredValue) {
+  return MathUtils::clamp01(filteredValue / 255.0f);
 }
 
 float mapOscPitch(float knob) {

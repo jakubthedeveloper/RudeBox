@@ -77,17 +77,14 @@ bool configureCodec() {
       {0x17, 0x18},        // DAC standard I2S, 16-bit.
       {0x18, 0x02},        // DAC MCLK/Fs = 256.
       {0x1A, 0x00},        // Left DAC digital volume: 0 dB.
-      {0x1B, 0x00},        // Right DAC digital volume: 0 dB.
       {0x26, 0x00},        // Analog bypass inputs not selected.
       {0x27, 0x90},        // Left DAC routed to left output mixer.
-      {0x2A, 0x90},        // Right DAC routed to right output mixer.
+      {0x2A, 0x00},        // No signal routed to the right output mixer.
       {0x2B, 0x80},        // ADC and DAC share the same LRCK.
       {0x2E, 0x1E},        // LOUT1 analog volume: 0 dB.
-      {0x2F, 0x1E},        // ROUT1 analog volume: 0 dB.
       {0x30, 0x1E},        // LOUT2 analog volume: 0 dB.
-      {0x31, 0x1E},        // ROUT2 analog volume: 0 dB.
       {0x03, 0x09},        // ADC/line on, microphone bias off.
-      {0x04, 0x3C},        // Power both DACs and all L/R output drivers.
+      {0x04, 0x68},        // Power the left DAC and left output drivers only.
       {0x19, 0x00},        // Unmute the DAC.
   };
 

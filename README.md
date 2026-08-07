@@ -141,6 +141,9 @@ Input-related defaults are stored in the `AppConfig::AudioInput` and
 
 ## Run
 
+The default PlatformIO environment builds the ESP32 firmware. The native
+environment runs the audio signal-path tests described below.
+
 Build and upload the firmware:
 
 ```sh

@@ -35,19 +35,19 @@ void reportTriggerValidation(const HitDetector::Result& result) {
                 static_cast<unsigned long>(result.windowEnergy));
 }
 
-bool triggerVoiceForDetectedPadHit(const HitDetector::Result& result,
-                                   const SynthControls& controls) {
-  if (!result.hitDetected) return false;
+ProcessResult triggerVoiceForDetectedPadHit(const HitDetector::Result& result,
+                                            const SynthControls& controls) {
+  if (!result.hitDetected) return {};
 
   SynthVoice::trigger(result.velocity, controls.oscPitchHz,
                       controls.pitchDropOctaves, controls.clickLevel,
                       controls.ampVelocity);
-  return true;
+  return {true, result.velocity};
 }
 
-bool processAudioInput(const SynthControls& controls) {
+ProcessResult processAudioInput(const SynthControls& controls) {
   if (!AudioIo::readMagnitudeBlock(AppConfig::AudioInput::CHANNEL, inputBlock)) {
-    return false;
+    return {};
   }
 
   const HitDetector::Result result = HitDetector::process(
@@ -64,10 +64,10 @@ void renderAudioOutput() {
 
 }  // namespace
 
-bool processAudioBlock(const SynthControls& controls) {
-  const bool padHitDetected = processAudioInput(controls);
+ProcessResult processAudioBlock(const SynthControls& controls) {
+  const ProcessResult result = processAudioInput(controls);
   renderAudioOutput();
-  return padHitDetected;
+  return result;
 }
 
 }  // namespace SynthEngine

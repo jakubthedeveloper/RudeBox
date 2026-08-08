@@ -80,10 +80,11 @@ RenderResult renderPadHit(
   FakeAudioIo::reset();
   FakeAudioIo::simulatePadImpulse(scenario.inputPeak);
 
-  const bool hitDetected = SynthEngine::processAudioBlock(controls);
+  const bool hitDetected =
+      SynthEngine::processAudioBlock(controls).hitDetected;
   bool unexpectedRetrigger = false;
   for (size_t block = 1; block < RENDER_BLOCK_COUNT; ++block) {
-    if (SynthEngine::processAudioBlock(controls)) {
+    if (SynthEngine::processAudioBlock(controls).hitDetected) {
       unexpectedRetrigger = true;
     }
   }
@@ -255,14 +256,18 @@ void testAcceptedHitStaysLockedOutUntilQuietBlock() {
   resetHitDetector();
   FakeAudioIo::reset();
   FakeAudioIo::simulatePadImpulse(600);
-  TEST_ASSERT_TRUE(SynthEngine::processAudioBlock(TEST_CONTROLS));
+  TEST_ASSERT_TRUE(
+      SynthEngine::processAudioBlock(TEST_CONTROLS).hitDetected);
 
   FakeAudioIo::simulatePadImpulse(500);
-  TEST_ASSERT_FALSE(SynthEngine::processAudioBlock(TEST_CONTROLS));
-  TEST_ASSERT_FALSE(SynthEngine::processAudioBlock(TEST_CONTROLS));
+  TEST_ASSERT_FALSE(
+      SynthEngine::processAudioBlock(TEST_CONTROLS).hitDetected);
+  TEST_ASSERT_FALSE(
+      SynthEngine::processAudioBlock(TEST_CONTROLS).hitDetected);
 
   FakeAudioIo::simulatePadImpulse(500);
-  TEST_ASSERT_TRUE(SynthEngine::processAudioBlock(TEST_CONTROLS));
+  TEST_ASSERT_TRUE(
+      SynthEngine::processAudioBlock(TEST_CONTROLS).hitDetected);
 }
 
 bool blockContainsNonZeroSample(const int32_t* samples) {

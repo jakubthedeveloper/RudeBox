@@ -56,9 +56,11 @@ constexpr uint8_t ADS7830_ADDRESS = 0x48;
 constexpr int ADS7830_SDA_PIN = 23;
 constexpr int ADS7830_SCL_PIN = 18;
 
-constexpr int ACTIVITY_LED_PIN = 22;
-constexpr bool ACTIVITY_LED_ACTIVE_LOW = true;
-constexpr uint32_t ACTIVITY_LED_PULSE_MS = 40;
+constexpr int SENSITIVITY_LED_PIN = 22;
+constexpr uint32_t SENSITIVITY_LED_PWM_FREQUENCY_HZ = 5000;
+constexpr uint8_t SENSITIVITY_LED_PWM_RESOLUTION_BITS = 8;
+constexpr uint32_t SENSITIVITY_LED_UPDATE_INTERVAL_MS = 5;
+constexpr uint32_t SENSITIVITY_LED_FADE_MS = 150;
 
 }  // namespace Ui
 

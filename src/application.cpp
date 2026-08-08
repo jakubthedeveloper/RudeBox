@@ -42,8 +42,9 @@ void begin() {
 
 void update() {
   const SynthControls controls = UserInterface::synthControls();
-  const bool padHitDetected = SynthEngine::processAudioBlock(controls);
-  if (padHitDetected) UserInterface::indicatePadHit();
+  const SynthEngine::ProcessResult result =
+      SynthEngine::processAudioBlock(controls);
+  if (result.hitDetected) UserInterface::indicatePadHit(result.velocity);
   UserInterface::update();
 }
 

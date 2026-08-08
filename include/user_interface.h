@@ -5,7 +5,7 @@
 namespace UserInterface {
 
 bool begin();
-void indicatePadHit();
+void indicatePadHit(float velocity);
 void update();
 SynthControls synthControls();
 

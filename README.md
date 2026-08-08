@@ -17,7 +17,7 @@ The firmware currently:
 - streams the measured input peak and trigger-validation diagnostics to
   Teleplot,
 - reads five potentiometers from an ADS7830 about every 5 ms,
-- briefly lights the activity LED after a drum-pad hit is detected.
+- shows accepted hit velocity on a PWM sensitivity LED with a visible decay.
 
 ## Code structure
 
@@ -43,8 +43,8 @@ processing details:
   voice.
 - `math_utils.cpp` owns small reusable numeric helpers shared across domains.
 - `user_interface.cpp` owns the UI lifecycle and exposes current synth controls;
-  it delegates potentiometer details to `synth_control_input.cpp` and owns LED
-  timing directly.
+  it delegates potentiometer details to `synth_control_input.cpp` and maps
+  accepted-hit velocity to sensitivity LED brightness and decay.
 - `audio_io.cpp`, `ads7830.cpp`, and `es8388.cpp` contain hardware-level details.
 
 ## User interface
@@ -86,12 +86,18 @@ reading to a higher control value. A3 controls only the click level; the click
 retains a fixed mild velocity response. A4 controls only the main oscillator
 and does not alter either envelope duration.
 
-### Activity LED
+### Sensitivity LED
 
-The activity LED signals drum hits detected from the dynamic pad connected to
-ES8388 LINE IN. By default it is configured as active-low on GPIO22 and stays on
-for 40 ms after a detected hit. These values are in the `AppConfig::Ui` section
-of `include/app_config.h`.
+The sensitivity LED is connected from GPIO22 through a resistor to its
+anode, with its cathode connected to GND. It is active-high and uses 5 kHz,
+8-bit hardware PWM updated every 5 ms.
+
+Only an accepted drum-pad hit updates the LED. The LED receives the same final
+`velocity` value used to trigger the synth voice after sensitivity mapping and
+clamping. Brightness uses `sqrt(velocity)`, making light hits easier to see,
+then decays exponentially to off in about 150 ms. A new accepted hit immediately
+replaces the current level instead of accumulating it. Pin, PWM, and fade values
+are configured in the `AppConfig::Ui` section of `include/app_config.h`.
 
 ## Logging
 

@@ -4,8 +4,13 @@
 
 namespace SynthEngine {
 
+struct ProcessResult {
+  bool hitDetected;
+  float velocity;
+};
+
 // Processes one input block and writes one synthesized output block.
-// Returns true when a hit from the drum pad triggered the voice.
-bool processAudioBlock(const SynthControls& controls);
+// Reports the velocity only when an accepted hit triggered the voice.
+ProcessResult processAudioBlock(const SynthControls& controls);
 
 }  // namespace SynthEngine

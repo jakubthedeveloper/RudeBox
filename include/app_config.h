@@ -68,7 +68,7 @@ constexpr uint32_t SENSITIVITY_LED_FADE_MS = 150;
 namespace Controls {
 
 // Potentiometer reading
-constexpr uint8_t POTENTIOMETER_COUNT = 5;
+constexpr uint8_t POTENTIOMETER_COUNT = 7;
 constexpr uint8_t SENSITIVITY_CHANNEL = 0;
 constexpr uint8_t OSC_PITCH_CHANNEL = 1;
 constexpr uint8_t PITCH_DROP_CHANNEL = 2;

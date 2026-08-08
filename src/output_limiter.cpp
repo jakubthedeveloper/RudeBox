@@ -25,12 +25,12 @@ static_assert(AppConfig::AudioOutput::LIMITER_RELEASE_MS > 0.0f,
 int16_t outputBuffer[SAMPLE_COUNT];
 float limiterGain = 1.0f;
 
-uint32_t magnitude(int16_t sample) {
-  const int32_t value = sample;
-  return static_cast<uint32_t>(value < 0 ? -value : value);
+uint32_t magnitude(int32_t sample) {
+  return static_cast<uint32_t>(sample < 0 ? -static_cast<int64_t>(sample)
+                                          : sample);
 }
 
-uint32_t findBlockPeak(const int16_t* inputSamples) {
+uint32_t findBlockPeak(const int32_t* inputSamples) {
   uint32_t peak = 0;
   for (size_t sample = 0; sample < SAMPLE_COUNT; ++sample) {
     const uint32_t value = magnitude(inputSamples[sample]);
@@ -61,7 +61,7 @@ void updateLimiterGain(float requiredGain) {
   limiterGain = releasedGain < requiredGain ? releasedGain : requiredGain;
 }
 
-int16_t limitSample(int16_t inputSample, float totalGain) {
+int16_t limitSample(int32_t inputSample, float totalGain) {
   int32_t sample = static_cast<int32_t>(inputSample * totalGain);
   if (sample > CEILING_SAMPLE) sample = CEILING_SAMPLE;
   if (sample < -CEILING_SAMPLE) sample = -CEILING_SAMPLE;
@@ -70,7 +70,7 @@ int16_t limitSample(int16_t inputSample, float totalGain) {
 
 }  // namespace
 
-const int16_t* process(const int16_t* inputSamples) {
+const int16_t* process(const int32_t* inputSamples) {
   const uint32_t peak = findBlockPeak(inputSamples);
   updateLimiterGain(requiredLimiterGain(peak));
 

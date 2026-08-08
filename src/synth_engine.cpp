@@ -40,7 +40,8 @@ bool triggerVoiceForDetectedPadHit(const HitDetector::Result& result,
   if (!result.hitDetected) return false;
 
   SynthVoice::trigger(result.velocity, controls.oscPitchHz,
-                      controls.pitchDropOctaves);
+                      controls.pitchDropOctaves, controls.clickLevel,
+                      controls.ampVelocity);
   return true;
 }
 
@@ -57,7 +58,7 @@ bool processAudioInput(const SynthControls& controls) {
 }
 
 void renderAudioOutput() {
-  const int16_t* synthesizedSamples = SynthVoice::render();
+  const int32_t* synthesizedSamples = SynthVoice::render();
   AudioIo::writeMono(OutputLimiter::process(synthesizedSamples));
 }
 

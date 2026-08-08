@@ -6,8 +6,8 @@ namespace AppConfig {
 
 namespace Diagnostics {
 
-constexpr bool LOG_AUDIO_PEAKS = true;
-constexpr bool LOG_TRIGGER_VALIDATION = true;
+constexpr bool LOG_AUDIO_PEAKS = false;
+constexpr bool LOG_TRIGGER_VALIDATION = false;
 
 }  // namespace Diagnostics
 
@@ -66,14 +66,16 @@ constexpr uint32_t ACTIVITY_LED_PULSE_MS = 40;
 namespace Controls {
 
 // Potentiometer reading
-constexpr uint8_t POTENTIOMETER_COUNT = 3;
+constexpr uint8_t POTENTIOMETER_COUNT = 5;
 constexpr uint8_t SENSITIVITY_CHANNEL = 0;
 constexpr uint8_t OSC_PITCH_CHANNEL = 1;
 constexpr uint8_t PITCH_DROP_CHANNEL = 2;
+constexpr uint8_t CLICK_CHANNEL = 3;
+constexpr uint8_t AMP_VELOCITY_CHANNEL = 4;
 constexpr uint32_t CONTROL_SCAN_INTERVAL_MS = 5;
 constexpr float POT_FILTER_ALPHA = 0.12f;
 constexpr uint8_t POT_CHANGE_THRESHOLD = 2;
-constexpr bool LOG_CONTROL_VALUES = false;
+constexpr bool LOG_CONTROL_VALUES = true;
 constexpr uint32_t CONTROL_LOG_INTERVAL_MS = 100;
 
 // Oscillator pitch
@@ -88,6 +90,8 @@ constexpr float PITCH_DROP_MAX_OCTAVES = 4.5f;
 constexpr float DEFAULT_SENSITIVITY = 0.5f;
 constexpr float DEFAULT_OSC_PITCH_HZ = 150.0f;
 constexpr float DEFAULT_PITCH_DROP_OCTAVES = 1.0f;
+constexpr float DEFAULT_CLICK_LEVEL = 0.0f;
+constexpr float DEFAULT_AMP_VELOCITY = 1.0f;
 
 }  // namespace Controls
 
@@ -95,9 +99,10 @@ namespace Voice {
 
 constexpr float AMP_RELEASE_MS = 300.0f;
 constexpr float PITCH_DECAY_MS = 190.0f;
+constexpr float CLICK_DECAY_MS = 8.0f;
+constexpr float CLICK_MAX_AMPLITUDE = 0.25f;
+constexpr float AMP_VELOCITY_FULL_SCALE = 0.9f;
 
-constexpr float MIN_VOLUME = 0.05f;
-constexpr float AMP_VELOCITY_AMOUNT = 1.0f;
 constexpr float MAX_START_FREQUENCY_HZ = 8000.0f;
 constexpr float PITCH_DROP_VELOCITY_MIN_SCALE = 0.65f;
 

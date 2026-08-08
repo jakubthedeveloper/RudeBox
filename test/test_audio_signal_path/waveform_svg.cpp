@@ -119,7 +119,9 @@ bool write(const std::filesystem::path& outputPath,
          << " | Sensitivity: " << std::fixed << std::setprecision(2)
          << description.sensitivity << " | Oscillator: "
          << description.oscillatorPitchHz << " Hz | Pitch drop: "
-         << description.pitchDropOctaves << " oct | Output peak: "
+         << description.pitchDropOctaves << " oct | Click: "
+         << description.clickLevel << " | AMP VEL: "
+         << description.ampVelocity << " | Output peak: "
          << outputPeak(samples) << "</text>\n"
          << "<rect x=\"" << PLOT_LEFT << "\" y=\"" << PLOT_TOP
          << "\" width=\"" << PLOT_WIDTH << "\" height=\"" << PLOT_HEIGHT

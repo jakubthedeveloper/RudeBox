@@ -22,26 +22,47 @@ SynthControls controls = {
     AppConfig::Controls::DEFAULT_SENSITIVITY,
     AppConfig::Controls::DEFAULT_OSC_PITCH_HZ,
     AppConfig::Controls::DEFAULT_PITCH_DROP_OCTAVES,
+    AppConfig::Controls::DEFAULT_CLICK_LEVEL,
+    AppConfig::Controls::DEFAULT_AMP_VELOCITY,
 };
 uint32_t lastScanMs = 0;
 uint32_t lastLogMs = 0;
 
-static_assert(AppConfig::Controls::POTENTIOMETER_COUNT == 3,
-              "The control mapping expects exactly three potentiometers");
+static_assert(AppConfig::Controls::POTENTIOMETER_COUNT > 0,
+              "At least one potentiometer must be configured");
 static_assert(AppConfig::Controls::SENSITIVITY_CHANNEL <
                   AppConfig::Controls::POTENTIOMETER_COUNT &&
                   AppConfig::Controls::OSC_PITCH_CHANNEL <
                       AppConfig::Controls::POTENTIOMETER_COUNT &&
                   AppConfig::Controls::PITCH_DROP_CHANNEL <
+                      AppConfig::Controls::POTENTIOMETER_COUNT &&
+                  AppConfig::Controls::CLICK_CHANNEL <
+                      AppConfig::Controls::POTENTIOMETER_COUNT &&
+                  AppConfig::Controls::AMP_VELOCITY_CHANNEL <
                       AppConfig::Controls::POTENTIOMETER_COUNT,
               "Each control channel must be scanned");
-static_assert(AppConfig::Controls::SENSITIVITY_CHANNEL !=
-                      AppConfig::Controls::OSC_PITCH_CHANNEL &&
-                  AppConfig::Controls::SENSITIVITY_CHANNEL !=
-                      AppConfig::Controls::PITCH_DROP_CHANNEL &&
-                  AppConfig::Controls::OSC_PITCH_CHANNEL !=
-                      AppConfig::Controls::PITCH_DROP_CHANNEL,
-              "Each control needs a distinct ADS7830 channel");
+static_assert(
+    AppConfig::Controls::SENSITIVITY_CHANNEL !=
+            AppConfig::Controls::OSC_PITCH_CHANNEL &&
+        AppConfig::Controls::SENSITIVITY_CHANNEL !=
+            AppConfig::Controls::PITCH_DROP_CHANNEL &&
+        AppConfig::Controls::SENSITIVITY_CHANNEL !=
+            AppConfig::Controls::CLICK_CHANNEL &&
+        AppConfig::Controls::SENSITIVITY_CHANNEL !=
+            AppConfig::Controls::AMP_VELOCITY_CHANNEL &&
+        AppConfig::Controls::OSC_PITCH_CHANNEL !=
+            AppConfig::Controls::PITCH_DROP_CHANNEL &&
+        AppConfig::Controls::OSC_PITCH_CHANNEL !=
+            AppConfig::Controls::CLICK_CHANNEL &&
+        AppConfig::Controls::OSC_PITCH_CHANNEL !=
+            AppConfig::Controls::AMP_VELOCITY_CHANNEL &&
+        AppConfig::Controls::PITCH_DROP_CHANNEL !=
+            AppConfig::Controls::CLICK_CHANNEL &&
+        AppConfig::Controls::PITCH_DROP_CHANNEL !=
+            AppConfig::Controls::AMP_VELOCITY_CHANNEL &&
+        AppConfig::Controls::CLICK_CHANNEL !=
+            AppConfig::Controls::AMP_VELOCITY_CHANNEL,
+    "Each control needs a distinct ADS7830 channel");
 static_assert(AppConfig::Controls::POT_FILTER_ALPHA > 0.0f &&
                   AppConfig::Controls::POT_FILTER_ALPHA <= 1.0f,
               "The potentiometer EMA alpha must be in (0, 1]");
@@ -97,12 +118,16 @@ void logControlValues(uint32_t now) {
 
   lastLogMs = now;
   Serial.printf(
-      "pots raw=[%u,%u,%u] filtered=[%.2f,%.2f,%.2f] "
-      "sensitivity=%.3f oscPitchHz=%.2f pitchDropOct=%.3f\n",
-      potentiometers[0].raw, potentiometers[1].raw, potentiometers[2].raw,
-      potentiometers[0].filtered, potentiometers[1].filtered,
-      potentiometers[2].filtered, controls.sensitivity, controls.oscPitchHz,
-      controls.pitchDropOctaves);
+      "pots filtered=[%.2f,%.2f,%.2f,%.2f,%.2f] "
+      "sensitivity=%.3f oscPitchHz=%.2f pitchDropOct=%.3f "
+      "CLICK=%.3f AMP_VEL=%.3f\n",
+      potentiometers[0].filtered,
+      potentiometers[1].filtered,
+      potentiometers[2].filtered,
+      potentiometers[3].filtered,
+      potentiometers[4].filtered,
+      controls.sensitivity, controls.oscPitchHz, controls.pitchDropOctaves,
+      controls.clickLevel, controls.ampVelocity);
 }
 
 void updatePotentiometer(uint8_t channel, SynthControls& nextControls) {
@@ -142,6 +167,12 @@ void applyMappedValue(uint8_t channel, float filteredValue,
     case AppConfig::Controls::PITCH_DROP_CHANNEL:
       nextControls.pitchDropOctaves =
           mapPitchDrop(normalizedKnob(filteredValue));
+      break;
+    case AppConfig::Controls::CLICK_CHANNEL:
+      nextControls.clickLevel = normalizedKnob(filteredValue);
+      break;
+    case AppConfig::Controls::AMP_VELOCITY_CHANNEL:
+      nextControls.ampVelocity = normalizedKnob(filteredValue);
       break;
   }
 }

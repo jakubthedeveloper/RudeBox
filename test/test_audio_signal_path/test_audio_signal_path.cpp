@@ -11,6 +11,7 @@
 #include "hit_detector.h"
 #include "synth_controls.h"
 #include "synth_engine.h"
+#include "synth_voice.h"
 #include "waveform_svg.h"
 
 HardwareSerial Serial;
@@ -21,6 +22,16 @@ constexpr SynthControls TEST_CONTROLS = {
     0.5f,
     150.0f,
     1.0f,
+    0.0f,
+    1.0f,
+};
+
+constexpr SynthControls MIXED_CLICK_CONTROLS = {
+    0.5f,
+    150.0f,
+    1.0f,
+    1.0f,
+    0.0f,
 };
 
 constexpr size_t RELEASE_SAMPLE_COUNT = static_cast<size_t>(
@@ -44,10 +55,9 @@ struct RenderResult {
   std::vector<int16_t> outputSamples;
 };
 
-void resetHitDetector() {
+void resetHitDetector(float sensitivity = TEST_CONTROLS.sensitivity) {
   const std::vector<uint16_t> quietBlock(AudioIo::BLOCK_FRAMES, 0);
-  HitDetector::process(quietBlock.data(), quietBlock.size(),
-                       TEST_CONTROLS.sensitivity);
+  HitDetector::process(quietBlock.data(), quietBlock.size(), sensitivity);
 }
 
 std::filesystem::path artifactDirectory() {
@@ -61,17 +71,19 @@ std::filesystem::path artifactPath(const HitScenario& scenario) {
           std::to_string(scenario.inputPeak) + ".svg");
 }
 
-RenderResult renderPadHit(const HitScenario& scenario) {
+RenderResult renderPadHit(
+    const HitScenario& scenario,
+    const SynthControls& controls = TEST_CONTROLS) {
   // A quiet input block establishes the real detector's armed baseline and
   // makes every scenario independent from the preceding test.
-  resetHitDetector();
+  resetHitDetector(controls.sensitivity);
   FakeAudioIo::reset();
   FakeAudioIo::simulatePadImpulse(scenario.inputPeak);
 
-  const bool hitDetected = SynthEngine::processAudioBlock(TEST_CONTROLS);
+  const bool hitDetected = SynthEngine::processAudioBlock(controls);
   bool unexpectedRetrigger = false;
   for (size_t block = 1; block < RENDER_BLOCK_COUNT; ++block) {
-    if (SynthEngine::processAudioBlock(TEST_CONTROLS)) {
+    if (SynthEngine::processAudioBlock(controls)) {
       unexpectedRetrigger = true;
     }
   }
@@ -94,13 +106,16 @@ int16_t findOutputPeak(const std::vector<int16_t>& samples) {
 }
 
 void writeArtifact(const HitScenario& scenario,
-                   const std::vector<int16_t>& samples) {
+                   const std::vector<int16_t>& samples,
+                   const SynthControls& controls = TEST_CONTROLS) {
   const WaveformSvg::PlotDescription description = {
       scenario.title,
       scenario.inputPeak,
-      TEST_CONTROLS.sensitivity,
-      TEST_CONTROLS.oscPitchHz,
-      TEST_CONTROLS.pitchDropOctaves,
+      controls.sensitivity,
+      controls.oscPitchHz,
+      controls.pitchDropOctaves,
+      controls.clickLevel,
+      controls.ampVelocity,
       AudioIo::SAMPLE_RATE,
   };
   TEST_ASSERT_TRUE_MESSAGE(
@@ -131,17 +146,42 @@ void verifyAudioPath(const HitScenario& scenario) {
 }
 
 void testWeakPadHit() {
-  verifyAudioPath({"weak", "Audio path - weak pad hit", 300, 1000, 1250});
+  verifyAudioPath({"weak", "Audio path - weak pad hit", 300, 300, 450});
 }
 
 void testMediumPadHit() {
   verifyAudioPath(
-      {"medium", "Audio path - medium pad hit", 1560, 6500, 7200});
+      {"medium", "Audio path - medium pad hit", 1560, 6900, 7300});
 }
 
 void testMaximumPadHit() {
   verifyAudioPath(
       {"maximum", "Audio path - maximum pad hit", 3000, 15500, 16500});
+}
+
+void testMixedClickAndVoiceArtifact() {
+  constexpr float ARTIFACT_DURATION_MS = 20.0f;
+  const HitScenario scenario = {
+      "mixed_click_and_voice",
+      "Audio path - click and voice mix",
+      1560,
+      0,
+      32767,
+  };
+  const RenderResult result = renderPadHit(scenario, MIXED_CLICK_CONTROLS);
+  const size_t artifactSampleCount = static_cast<size_t>(
+      AudioIo::SAMPLE_RATE * ARTIFACT_DURATION_MS / 1000.0f);
+
+  TEST_ASSERT_TRUE_MESSAGE(result.hitDetected,
+                           "The mixed click scenario did not trigger a hit");
+  TEST_ASSERT_FALSE_MESSAGE(result.unexpectedRetrigger,
+                            "The mixed click scenario retriggered unexpectedly");
+  TEST_ASSERT_TRUE(result.outputSamples.size() >= artifactSampleCount);
+
+  const std::vector<int16_t> closeUp(
+      result.outputSamples.begin(),
+      result.outputSamples.begin() + artifactSampleCount);
+  writeArtifact(scenario, closeUp, MIXED_CLICK_CONTROLS);
 }
 
 void testSingleSampleElectricalSpikeIsRejected() {
@@ -165,10 +205,12 @@ void testLightPadTailIsAccepted() {
   std::vector<uint16_t> magnitudes(AudioIo::BLOCK_FRAMES, 0);
   magnitudes[20] = 180;
   magnitudes[21] = 420;
-  magnitudes[22] = 250;
-  magnitudes[23] = 130;
-  magnitudes[24] = 80;
-  magnitudes[25] = 40;
+  magnitudes[22] = 300;
+  magnitudes[23] = 250;
+  magnitudes[24] = 200;
+  magnitudes[25] = 170;
+  magnitudes[26] = 140;
+  magnitudes[27] = 110;
 
   const HitDetector::Result result = HitDetector::process(
       magnitudes.data(), magnitudes.size(), TEST_CONTROLS.sensitivity);
@@ -177,8 +219,8 @@ void testLightPadTailIsAccepted() {
   TEST_ASSERT_TRUE(result.validationCompleted);
   TEST_ASSERT_TRUE(result.hitDetected);
   TEST_ASSERT_EQUAL_UINT16(420, result.validationMax);
-  TEST_ASSERT_EQUAL_UINT8(4, result.activeSamples);
-  TEST_ASSERT_EQUAL_UINT32(1100, result.windowEnergy);
+  TEST_ASSERT_EQUAL_UINT8(8, result.activeSamples);
+  TEST_ASSERT_EQUAL_UINT32(1770, result.windowEnergy);
 }
 
 void testValidationContinuesAcrossInputBlocks() {
@@ -193,17 +235,20 @@ void testValidationContinuesAcrossInputBlocks() {
   TEST_ASSERT_FALSE(firstResult.hitDetected);
 
   std::vector<uint16_t> secondBlock(AudioIo::BLOCK_FRAMES, 0);
-  secondBlock[0] = 250;
-  secondBlock[1] = 130;
-  secondBlock[2] = 80;
-  secondBlock[3] = 40;
+  secondBlock[0] = 350;
+  secondBlock[1] = 300;
+  secondBlock[2] = 250;
+  secondBlock[3] = 200;
+  secondBlock[4] = 170;
+  secondBlock[5] = 140;
+  secondBlock[6] = 110;
   const HitDetector::Result secondResult = HitDetector::process(
       secondBlock.data(), secondBlock.size(), TEST_CONTROLS.sensitivity);
 
   TEST_ASSERT_TRUE(secondResult.validationCompleted);
   TEST_ASSERT_TRUE(secondResult.hitDetected);
   TEST_ASSERT_EQUAL_UINT16(420, secondResult.validationMax);
-  TEST_ASSERT_EQUAL_UINT8(3, secondResult.activeSamples);
+  TEST_ASSERT_EQUAL_UINT8(8, secondResult.activeSamples);
 }
 
 void testAcceptedHitStaysLockedOutUntilQuietBlock() {
@@ -220,6 +265,109 @@ void testAcceptedHitStaysLockedOutUntilQuietBlock() {
   TEST_ASSERT_TRUE(SynthEngine::processAudioBlock(TEST_CONTROLS));
 }
 
+bool blockContainsNonZeroSample(const int32_t* samples) {
+  for (size_t sample = 0; sample < AudioIo::BLOCK_FRAMES; ++sample) {
+    if (samples[sample] != 0) return true;
+  }
+  return false;
+}
+
+std::vector<int16_t> renderClickEnvelope() {
+  constexpr float ARTIFACT_DURATION_MS =
+      AppConfig::Voice::CLICK_DECAY_MS + 4.0f;
+  const size_t sampleCount = static_cast<size_t>(
+      AudioIo::SAMPLE_RATE * ARTIFACT_DURATION_MS / 1000.0f);
+  const size_t blockCount =
+      (sampleCount + AudioIo::BLOCK_FRAMES - 1) / AudioIo::BLOCK_FRAMES;
+
+  SynthVoice::trigger(1.0f, 0.0f, 0.0f, 1.0f, 1.0f);
+  std::vector<int16_t> samples;
+  samples.reserve(sampleCount);
+  for (size_t block = 0; block < blockCount; ++block) {
+    const int32_t* rendered = SynthVoice::render();
+    for (size_t frame = 0;
+         frame < AudioIo::BLOCK_FRAMES && samples.size() < sampleCount;
+         ++frame) {
+      samples.push_back(static_cast<int16_t>(rendered[frame]));
+    }
+  }
+  return samples;
+}
+
+bool samplesContainNonZero(const std::vector<int16_t>& samples,
+                           size_t begin, size_t end) {
+  for (size_t sample = begin; sample < end; ++sample) {
+    if (samples[sample] != 0) return true;
+  }
+  return false;
+}
+
+void writeClickEnvelopeArtifact(const std::vector<int16_t>& samples) {
+  const WaveformSvg::PlotDescription description = {
+      "Click envelope - maximum level",
+      0,
+      0.0f,
+      0.0f,
+      0.0f,
+      1.0f,
+      1.0f,
+      AudioIo::SAMPLE_RATE,
+  };
+  TEST_ASSERT_TRUE_MESSAGE(
+      WaveformSvg::write(artifactDirectory() /
+                             "audio_path_click_envelope_level_1.svg",
+                         samples, description),
+      "Could not write the click envelope SVG artifact");
+}
+
+void testClickIsSilentAtMinimumLevel() {
+  SynthVoice::trigger(1.0f, 0.0f, 0.0f, 0.0f, 1.0f);
+  TEST_ASSERT_FALSE(blockContainsNonZeroSample(SynthVoice::render()));
+}
+
+void testClickDecaysAndCanBeRetriggered() {
+  const std::vector<int16_t> samples = renderClickEnvelope();
+  const size_t clickDecaySamples = static_cast<size_t>(
+      AudioIo::SAMPLE_RATE * AppConfig::Voice::CLICK_DECAY_MS / 1000.0f);
+
+  TEST_ASSERT_TRUE(samplesContainNonZero(
+      samples, 0, AudioIo::BLOCK_FRAMES));
+  TEST_ASSERT_FALSE(samplesContainNonZero(
+      samples, clickDecaySamples + 1, samples.size()));
+  writeClickEnvelopeArtifact(samples);
+
+  SynthVoice::trigger(0.0f, 0.0f, 0.0f, 1.0f, 1.0f);
+  TEST_ASSERT_TRUE(blockContainsNonZeroSample(SynthVoice::render()));
+}
+
+void testAmpVelocityInterpolatesBetweenConstantAndFullDynamics() {
+  constexpr float VELOCITY = 0.2f;
+  constexpr float QUARTER_SAMPLE_RATE = AudioIo::SAMPLE_RATE / 4.0f;
+
+  SynthVoice::trigger(VELOCITY, QUARTER_SAMPLE_RATE, 0.0f, 0.0f, 0.0f);
+  const int32_t constantAmplitude = SynthVoice::render()[1];
+
+  SynthVoice::trigger(VELOCITY, QUARTER_SAMPLE_RATE, 0.0f, 0.0f, 1.0f);
+  const int32_t velocityAmplitude = SynthVoice::render()[1];
+
+  TEST_ASSERT_TRUE(constantAmplitude > velocityAmplitude * 4.4f);
+  TEST_ASSERT_TRUE(constantAmplitude < velocityAmplitude * 4.6f);
+}
+
+void testStrongHitLevelMatchesConstantAmplitude() {
+  constexpr float QUARTER_SAMPLE_RATE = AudioIo::SAMPLE_RATE / 4.0f;
+
+  SynthVoice::trigger(AppConfig::Voice::AMP_VELOCITY_FULL_SCALE,
+                      QUARTER_SAMPLE_RATE, 0.0f, 0.0f, 0.0f);
+  const int32_t constantAmplitude = SynthVoice::render()[1];
+
+  SynthVoice::trigger(AppConfig::Voice::AMP_VELOCITY_FULL_SCALE,
+                      QUARTER_SAMPLE_RATE, 0.0f, 0.0f, 1.0f);
+  const int32_t fullVelocityAmplitude = SynthVoice::render()[1];
+
+  TEST_ASSERT_EQUAL_INT32(constantAmplitude, fullVelocityAmplitude);
+}
+
 }  // namespace
 
 void setUp() {}
@@ -232,8 +380,13 @@ int main(int, char**) {
   RUN_TEST(testLightPadTailIsAccepted);
   RUN_TEST(testValidationContinuesAcrossInputBlocks);
   RUN_TEST(testAcceptedHitStaysLockedOutUntilQuietBlock);
+  RUN_TEST(testClickIsSilentAtMinimumLevel);
+  RUN_TEST(testClickDecaysAndCanBeRetriggered);
+  RUN_TEST(testAmpVelocityInterpolatesBetweenConstantAndFullDynamics);
+  RUN_TEST(testStrongHitLevelMatchesConstantAmplitude);
   RUN_TEST(testWeakPadHit);
   RUN_TEST(testMediumPadHit);
   RUN_TEST(testMaximumPadHit);
+  RUN_TEST(testMixedClickAndVoiceArtifact);
   return UNITY_END();
 }

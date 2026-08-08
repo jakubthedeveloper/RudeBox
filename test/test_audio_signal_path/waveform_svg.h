@@ -14,6 +14,8 @@ struct PlotDescription {
   float sensitivity;
   float oscillatorPitchHz;
   float pitchDropOctaves;
+  float clickLevel;
+  float ampVelocity;
   uint32_t sampleRate;
 };
 

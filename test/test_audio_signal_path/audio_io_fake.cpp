@@ -23,10 +23,13 @@ void reset() {
 void simulatePadImpulse(uint16_t peak) {
   std::vector<uint16_t> magnitudes(AudioIo::BLOCK_FRAMES, 0);
   magnitudes[0] = peak;
-  magnitudes[1] = static_cast<uint16_t>(peak * 65U / 100U);
-  magnitudes[2] = static_cast<uint16_t>(peak * 35U / 100U);
-  magnitudes[3] = static_cast<uint16_t>(peak * 20U / 100U);
-  magnitudes[4] = static_cast<uint16_t>(peak * 12U / 100U);
+  magnitudes[1] = static_cast<uint16_t>(peak * 85U / 100U);
+  magnitudes[2] = static_cast<uint16_t>(peak * 70U / 100U);
+  magnitudes[3] = static_cast<uint16_t>(peak * 60U / 100U);
+  magnitudes[4] = static_cast<uint16_t>(peak * 50U / 100U);
+  magnitudes[5] = static_cast<uint16_t>(peak * 45U / 100U);
+  magnitudes[6] = static_cast<uint16_t>(peak * 40U / 100U);
+  magnitudes[7] = static_cast<uint16_t>(peak * 35U / 100U);
   inputBlocks.push_back(magnitudes);
 }
 

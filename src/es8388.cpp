@@ -85,7 +85,7 @@ bool configureCodec() {
       {0x30, 0x1E},        // LOUT2 analog volume: 0 dB.
       {0x03, 0x09},        // ADC/line on, microphone bias off.
       {0x04, 0x68},        // Power the left DAC and left output drivers only.
-      {0x19, 0x00},        // Unmute the DAC.
+      {0x19, 0x22},        // Unmute the DAC and preserve its default control bits.
   };
 
   for (const Setting& setting : settings) {

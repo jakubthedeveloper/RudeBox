@@ -139,6 +139,8 @@ The final output stage is configured in `AppConfig::AudioOutput`. It applies a m
 
 At each trigger, the existing A2 pitch-drop depth retains its 65–100% velocity scaling and is combined with A7 PITCH VEL. The A7 contribution ranges from zero for the weakest hit to the full selected depth for maximum velocity, making hit strength clearly affect the pitch sweep. Both pitch contributions use the same exponential envelope selected by A6. The pitch-envelope frequency is capped at 8 kHz, while A1 selects the base pitch across its full configured range. The exponential decay range and maximum A7 depth are configured in `AppConfig::Controls` as `DECAY_MIN_MS`, `DECAY_MAX_MS`, and `ENV_TO_PITCH_MAX_SEMITONES`.
 
+The I2S stream remains active continuously and idle output is exact-zero PCM. ES8388 DAC Control 3 is restored to `0x22` after codec initialization, which leaves the DAC unmuted while preserving its default soft-ramp and control bits. Clearing the complete register to `0x00` caused a repeatable output pop after the codec received sustained digital silence.
+
 Input-related defaults are stored in the `AppConfig::AudioInput` and `AppConfig::HitDetection` sections of the same file:
 
 - `AppConfig::AudioInput::CHANNEL` — selected LINE IN channel.

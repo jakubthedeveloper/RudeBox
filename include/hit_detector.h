@@ -11,7 +11,9 @@ struct Result {
   bool hitDetected;
   uint16_t rawPeak;
   uint16_t validationMax;
-  uint8_t activeSamples;
+  uint16_t activeSamples;
+  uint16_t tailMaximum;
+  uint16_t tailActiveSamples;
   uint32_t windowEnergy;
   float velocity;
 };

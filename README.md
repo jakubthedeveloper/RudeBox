@@ -5,7 +5,7 @@ Synth Tom ESP32 is an electronic drum synth build on the ESP32 Audio Kit V2.2 wi
 The firmware currently:
 
 - reads drum pad impulses from the right channel of ES8388 LINE IN,
-- validates each trigger candidate from the shape of an eight-sample impulse window and rejects isolated electrical spikes,
+- validates each trigger candidate from its activity and retained tail amplitude across a 128-sample impulse window, rejecting both isolated electrical spikes and sharp voltage jumps with weak tails,
 - maps accepted peaks into normalized velocity using a sensitivity control,
 - triggers one monophonic synth-drum voice per hit,
 - morphs the main oscillator continuously from triangle through square to a narrow pulse, applies shared exponential amplitude and pitch envelopes, and mixes in a short independent noise click at the start of each accepted hit,
@@ -60,6 +60,10 @@ SIGNAL ----|<|----+---- GND
 PAD SLEEVE ---------------------------- GND
 ```
 
+### Warning
+
+The ES8388 selects its `RINPUT2` line-input path, powers down the unused left analog input and left ADC, and keeps microphone bias powered down. In the ES8388 version of the ESP32-A1S module, `MIC2N` and `LINEINR` both connect to the codec's `RIN2`, while `MIC2P` and `LINEINL` both connect to `LIN2`. Software therefore cannot separate the second onboard microphone from LINE IN because their voltages are physically combined before reaching the codec. Touching the unpowered microphone can still inject a trigger impulse, and complete isolation requires disconnecting that microphone's coupling components on the board or removing the microphone.
+
 ## User interface
 
 ### Potentiometers
@@ -101,7 +105,7 @@ POT wiper ----[680R]----+------> ADS7830 CHx
 - A6 — DECAY: selects the exponential main-envelope duration from 30 ms to 2400 ms. The selected duration is used by both amplitude and pitch envelopes.
 - A7 — PITCH VEL: selects an additional velocity-sensitive pitch-envelope depth from 0 to 36 semitones. The contribution used for a hit is the selected depth multiplied by that hit's normalized velocity, so at the maximum setting it ranges from 0 semitones for velocity 0 to 36 semitones (three octaves) for velocity 1. It is added to the A2 PITCH DROP depth: the oscillator starts above the A1 base pitch by their combined amount and falls back toward the base pitch with the A6 decay, subject to the 8 kHz frequency cap.
 
-All channels are sampled every 5 ms. An EMA filter and a two-count dead zone stabilize the native 8-bit readings. Every control maps a higher ADC reading to a higher control value. Trigger acceptance is determined by the short eight-sample impulse-shape window, but velocity is mapped from the full peak captured across the audio block so a rising impulse is not reduced to its early threshold-crossing level. A0 is used when mapping each accepted hit, and A5 is applied at control rate so it can change the waveform while a voice is sounding. The sound parameters from A1, A2, A3, A4, A6, and A7 are captured when a hit triggers and do not modify an already sounding voice. A3 controls only the click, which retains its own fixed 8 ms decay, while A4 controls only the main oscillator amplitude and does not alter either envelope duration.
+All channels are sampled every 5 ms. An EMA filter and a two-count dead zone stabilize the native 8-bit readings. Every control maps a higher ADC reading to a higher control value. Trigger acceptance is determined by a 128-sample impulse-shape window that checks total activity and the strength and activity of its later half, but velocity is mapped from the full peak captured during processing so a rising impulse is not reduced to its early threshold-crossing level. Validation adds about 2.9 ms between the threshold crossing and trigger acceptance. A0 is used when mapping each accepted hit, and A5 is applied at control rate so it can change the waveform while a voice is sounding. The sound parameters from A1, A2, A3, A4, A6, and A7 are captured when a hit triggers and do not modify an already sounding voice. A3 controls only the click, which retains its own fixed 8 ms decay, while A4 controls only the main oscillator amplitude and does not alter either envelope duration.
 
 ### Sensitivity LED
 
@@ -114,19 +118,19 @@ Only an accepted drum-pad hit updates the LED. The LED receives the same final `
 Serial output categories can be enabled independently in the `AppConfig::Diagnostics` and `AppConfig::Controls` sections of `include/app_config.h`:
 
 - `AppConfig::Diagnostics::LOG_AUDIO_PEAKS` — streams ES8388 input peaks in Teleplot format as `rawPeak`,
-- `AppConfig::Diagnostics::LOG_TRIGGER_VALIDATION` — reports `triggerCandidate`, `triggerAccepted`, `validationMax`, final mapped `velocity`, `activeSamples`, and `windowEnergy` when a candidate starts or a validation finishes,
+- `AppConfig::Diagnostics::LOG_TRIGGER_VALIDATION` — reports `triggerCandidate`, `triggerAccepted`, `validationMax`, final mapped `velocity`, `activeSamples`, `tailMaximum`, `tailActiveSamples`, and `windowEnergy` when a candidate starts or a validation finishes,
 - `AppConfig::Controls::LOG_CONTROL_VALUES` — prints throttled filtered and mapped potentiometer values,
 - `AppConfig::Diagnostics::LOG_FATAL_ERRORS` — reports a fatal hardware-initialization failure before stopping the application.
 
 All logging categories are disabled by default, and the serial port is not initialized while they remain disabled. A fatal initialization failure therefore stops the application silently in the default configuration. When enabled, validation details are event-driven rather than sent for every audio block, which limits their timing impact. Control logging prints all eight filtered ADC values plus the mapped control values, including `shape`, `decay_ms`, and the maximum `env_to_pitch` depth in semitones.
 
-For tuning, an isolated electrical spike should normally show `activeSamples:1` and `triggerAccepted:0`. A pad hit should retain all eight samples at or above the follow threshold and show `triggerAccepted:1`. Compare `rawPeak` with the resulting `velocity` for light, medium, and strong hits when calibrating `PAD_INPUT_MIN`, `PAD_INPUT_MAX`, and SENSITIVITY. `validationMax` and `windowEnergy` describe only the short acceptance window and do not determine hit strength after acceptance. `windowEnergy` is diagnostic; it is not part of the acceptance condition.
+For tuning, an isolated electrical spike should normally show `activeSamples:1` and `triggerAccepted:0`. A sharp voltage jump may have many active samples but should be rejected when `tailMaximum / validationMax` is below `TRIGGER_MIN_TAIL_PEAK_RATIO`. An accepted pad hit must meet the total and tail active-sample requirements and retain enough relative amplitude in the later half of the validation window. Compare `rawPeak` with the resulting `velocity` for light, medium, and strong hits when calibrating `PAD_INPUT_MIN`, `PAD_INPUT_MAX`, and SENSITIVITY. `windowEnergy` remains diagnostic and is not part of the acceptance condition.
 
 ## Sound parameters
 
 Envelope, amplitude, and pitch-envelope behavior are configured in the `AppConfig::Voice` section of `include/app_config.h`. Potentiometer scanning, physical control ranges, channel assignment, and initial control values are kept in `AppConfig::Controls` for hardware tuning. Pad triggering and sensitivity response curves are configured in `AppConfig::HitDetection`.
 
-The final output stage is configured in `AppConfig::AudioOutput`. It applies a master gain of `0.5` (about -6 dB), then protects the codec input with a brickwall ceiling at `0.8` of full scale (about -1.9 dBFS). The limiter uses immediate block attack and a configurable release; it preserves the velocity dynamics instead of simply clipping the synthesized waveform.
+The final output stage is configured in `AppConfig::AudioOutput`. It applies a master gain of `0.5` (about -6 dB), then protects the codec input with a brickwall ceiling at `0.9` of full scale (about -0.9 dBFS). The limiter uses immediate block attack and a configurable release; it preserves the velocity dynamics instead of simply clipping the synthesized waveform.
 
 - `MIN_PULSE_WIDTH` — narrowest pulse produced at maximum SHAPE, set to `0.08`.
 - `ENVELOPE_SILENCE_THRESHOLD` — level reached by the shared exponential main envelope at the end of the selected DECAY duration.
@@ -146,9 +150,12 @@ Input-related defaults are stored in the `AppConfig::AudioInput` and `AppConfig:
 - `AppConfig::AudioInput::CHANNEL` — selected LINE IN channel.
 - `AppConfig::AudioInput::GAIN_CODE` — ES8388 input PGA gain.
 - `TRIGGER_PRE_THRESHOLD = 180` — starts validation when a magnitude reaches this level.
-- `TRIGGER_VALIDATION_SAMPLES = 8` — window length, including the candidate sample (about 0.18 ms at 44.1 kHz).
-- `TRIGGER_MIN_ACTIVE_SAMPLES = 8` — minimum number of samples needed to reject the single-spike shape.
+- `TRIGGER_VALIDATION_SAMPLES = 128` — window length, including the candidate sample (about 2.9 ms at 44.1 kHz).
+- `TRIGGER_MIN_ACTIVE_SAMPLES = 48` — minimum number of samples at or above the follow threshold across the complete validation window.
 - `TRIGGER_FOLLOW_THRESHOLD = 100` — magnitude at which a window sample counts as active.
+- `TRIGGER_TAIL_START_SAMPLE = 64` — first sample of the later half used to distinguish a sustained pad impulse from a sharp voltage jump.
+- `TRIGGER_MIN_TAIL_ACTIVE_SAMPLES = 16` — minimum number of active samples required in the later half.
+- `TRIGGER_MIN_TAIL_PEAK_RATIO = 0.20` — minimum later-half peak relative to the maximum across the complete validation window.
 - `TRIGGER_REARM_THRESHOLD = 120` — a complete input block must stay below this value before another accepted hit can trigger the voice.
 - `PAD_INPUT_MIN` and `PAD_INPUT_MAX` — programmed calibration points for velocity mapping.
 - `VELOCITY_EFFECTIVE_MAX_*` and `VELOCITY_CURVE_*` — endpoints of the sensitivity-dependent velocity response.
@@ -167,7 +174,7 @@ Serial output is disabled by default. To use it for diagnostics, enable the requ
 
 ## Audio signal-path tests
 
-The native integration test exercises the complete hardware-independent audio path: a simulated pad impulse enters through the `AudioIo` boundary, then the real hit detector, synth voice, and output limiter generate the captured mono output. It verifies rejection of a single-sample spike, acceptance of a light pad tail, validation across an input-block boundary, and lockout behavior. Weak, medium, and maximum scenarios derive their peaks from the configured `PAD_INPUT_MIN` and `PAD_INPUT_MAX`, so they remain representative after calibration changes. Rising-impulse regression cases keep the eight validation samples identical and place the actual peak later in the block; they verify that the final peak produces large differences in both AMP VEL output level and PITCH VEL frequency. Focused voice tests also verify click silence and transient level, decay/retrigger behavior, both ends of the AMP VEL interpolation, hard-hit gain at maximum AMP VEL, SHAPE endpoints and pulse width, velocity-sensitive A7 pitch modulation, and the A6 main-voice duration range.
+The native integration test exercises the complete hardware-independent audio path: a simulated pad impulse enters through the `AudioIo` boundary, then the real hit detector, synth voice, and output limiter generate the captured mono output. It verifies rejection of a single-sample spike and a sharp voltage jump with a weak tail, acceptance of a sustained light pad tail, validation across an input-block boundary, and lockout behavior. Weak, medium, and maximum scenarios derive their peaks from the configured `PAD_INPUT_MIN` and `PAD_INPUT_MAX`, so they remain representative after calibration changes. Rising-impulse regression cases place the actual peak after the initial threshold crossing and verify that the final peak produces large differences in both AMP VEL output level and PITCH VEL frequency. Focused voice tests also verify click silence and transient level, decay/retrigger behavior, both ends of the AMP VEL interpolation, hard-hit gain at maximum AMP VEL, SHAPE endpoints and pulse width, velocity-sensitive A7 pitch modulation, and the A6 main-voice duration range.
 
 Run the tests from the project root:
 

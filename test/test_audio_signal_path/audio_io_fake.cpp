@@ -23,26 +23,37 @@ void reset() {
 
 void simulatePadImpulse(uint16_t peak) {
   std::vector<uint16_t> magnitudes(AudioIo::BLOCK_FRAMES, 0);
-  magnitudes[0] = peak;
-  magnitudes[1] = static_cast<uint16_t>(peak * 85U / 100U);
-  magnitudes[2] = static_cast<uint16_t>(peak * 70U / 100U);
-  magnitudes[3] = static_cast<uint16_t>(peak * 60U / 100U);
-  magnitudes[4] = static_cast<uint16_t>(peak * 50U / 100U);
-  magnitudes[5] = static_cast<uint16_t>(peak * 45U / 100U);
-  magnitudes[6] = static_cast<uint16_t>(peak * 40U / 100U);
-  magnitudes[7] = static_cast<uint16_t>(peak * 35U / 100U);
+  const size_t lastSample =
+      AppConfig::HitDetection::TRIGGER_VALIDATION_SAMPLES - 1;
+  for (size_t sample = 0; sample <= lastSample; ++sample) {
+    const uint32_t percentage = 100U - 75U * sample / lastSample;
+    magnitudes[sample] =
+        static_cast<uint16_t>(static_cast<uint32_t>(peak) * percentage / 100U);
+  }
   inputBlocks.push_back(magnitudes);
 }
 
 void simulateRisingPadImpulse(uint16_t peak) {
   std::vector<uint16_t> magnitudes(AudioIo::BLOCK_FRAMES, 0);
-  for (size_t sample = 0;
-       sample < AppConfig::HitDetection::TRIGGER_VALIDATION_SAMPLES;
-       ++sample) {
+  constexpr size_t PEAK_SAMPLE = 16;
+  const size_t lastSample =
+      AppConfig::HitDetection::TRIGGER_VALIDATION_SAMPLES - 1;
+  const uint16_t tail =
+      peak / 4U > AppConfig::HitDetection::TRIGGER_FOLLOW_THRESHOLD
+          ? peak / 4U
+          : AppConfig::HitDetection::TRIGGER_FOLLOW_THRESHOLD;
+  for (size_t sample = 0; sample <= PEAK_SAMPLE; ++sample) {
     magnitudes[sample] = static_cast<uint16_t>(
-        AppConfig::HitDetection::TRIGGER_PRE_THRESHOLD + sample * 8U);
+        AppConfig::HitDetection::TRIGGER_PRE_THRESHOLD +
+        (static_cast<uint32_t>(peak) -
+         AppConfig::HitDetection::TRIGGER_PRE_THRESHOLD) *
+            sample / PEAK_SAMPLE);
   }
-  magnitudes[AppConfig::HitDetection::TRIGGER_VALIDATION_SAMPLES + 4] = peak;
+  for (size_t sample = PEAK_SAMPLE + 1; sample <= lastSample; ++sample) {
+    magnitudes[sample] = static_cast<uint16_t>(
+        peak - (static_cast<uint32_t>(peak) - tail) *
+                   (sample - PEAK_SAMPLE) / (lastSample - PEAK_SAMPLE));
+  }
   inputBlocks.push_back(magnitudes);
 }
 

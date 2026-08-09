@@ -248,21 +248,60 @@ void testSingleSampleElectricalSpikeIsRejected() {
   TEST_ASSERT_TRUE(result.validationCompleted);
   TEST_ASSERT_FALSE(result.hitDetected);
   TEST_ASSERT_EQUAL_UINT16(3000, result.validationMax);
-  TEST_ASSERT_EQUAL_UINT8(1, result.activeSamples);
+  TEST_ASSERT_EQUAL_UINT16(1, result.activeSamples);
+  TEST_ASSERT_EQUAL_UINT16(0, result.tailMaximum);
+  TEST_ASSERT_EQUAL_UINT16(0, result.tailActiveSamples);
   TEST_ASSERT_EQUAL_UINT32(3000, result.windowEnergy);
 }
 
-void testLightPadTailIsAccepted() {
+void testVoltageJumpWithWeakTailIsRejected() {
   resetHitDetector();
   std::vector<uint16_t> magnitudes(AudioIo::BLOCK_FRAMES, 0);
-  magnitudes[20] = 180;
-  magnitudes[21] = 420;
-  magnitudes[22] = 300;
-  magnitudes[23] = 250;
-  magnitudes[24] = 200;
-  magnitudes[25] = 170;
-  magnitudes[26] = 140;
-  magnitudes[27] = 110;
+  constexpr size_t CANDIDATE_SAMPLE = 20;
+  magnitudes[CANDIDATE_SAMPLE] = 1000;
+  for (size_t sample = CANDIDATE_SAMPLE + 1;
+       sample < CANDIDATE_SAMPLE +
+                    AppConfig::HitDetection::TRIGGER_VALIDATION_SAMPLES;
+       ++sample) {
+    magnitudes[sample] = 150;
+  }
+
+  const HitDetector::Result result = HitDetector::process(
+      magnitudes.data(), magnitudes.size(), TEST_CONTROLS.sensitivity);
+
+  TEST_ASSERT_TRUE(result.candidateStarted);
+  TEST_ASSERT_TRUE(result.validationCompleted);
+  TEST_ASSERT_FALSE(result.hitDetected);
+  TEST_ASSERT_EQUAL_UINT16(1000, result.validationMax);
+  TEST_ASSERT_EQUAL_UINT16(
+      AppConfig::HitDetection::TRIGGER_VALIDATION_SAMPLES,
+      result.activeSamples);
+  TEST_ASSERT_EQUAL_UINT16(150, result.tailMaximum);
+  TEST_ASSERT_EQUAL_UINT16(
+      AppConfig::HitDetection::TRIGGER_VALIDATION_SAMPLES -
+          AppConfig::HitDetection::TRIGGER_TAIL_START_SAMPLE,
+      result.tailActiveSamples);
+}
+
+void testSustainedLightPadTailIsAccepted() {
+  resetHitDetector();
+  std::vector<uint16_t> magnitudes(AudioIo::BLOCK_FRAMES, 0);
+  constexpr size_t CANDIDATE_SAMPLE = 20;
+  magnitudes[CANDIDATE_SAMPLE] = 180;
+  magnitudes[CANDIDATE_SAMPLE + 1] = 420;
+  for (size_t sample = CANDIDATE_SAMPLE + 2;
+       sample < CANDIDATE_SAMPLE +
+                    AppConfig::HitDetection::TRIGGER_TAIL_START_SAMPLE;
+       ++sample) {
+    magnitudes[sample] = 160;
+  }
+  for (size_t sample = CANDIDATE_SAMPLE +
+                       AppConfig::HitDetection::TRIGGER_TAIL_START_SAMPLE;
+       sample < CANDIDATE_SAMPLE +
+                    AppConfig::HitDetection::TRIGGER_VALIDATION_SAMPLES;
+       ++sample) {
+    magnitudes[sample] = 110;
+  }
 
   const HitDetector::Result result = HitDetector::process(
       magnitudes.data(), magnitudes.size(), TEST_CONTROLS.sensitivity);
@@ -271,8 +310,14 @@ void testLightPadTailIsAccepted() {
   TEST_ASSERT_TRUE(result.validationCompleted);
   TEST_ASSERT_TRUE(result.hitDetected);
   TEST_ASSERT_EQUAL_UINT16(420, result.validationMax);
-  TEST_ASSERT_EQUAL_UINT8(8, result.activeSamples);
-  TEST_ASSERT_EQUAL_UINT32(1770, result.windowEnergy);
+  TEST_ASSERT_EQUAL_UINT16(
+      AppConfig::HitDetection::TRIGGER_VALIDATION_SAMPLES,
+      result.activeSamples);
+  TEST_ASSERT_EQUAL_UINT16(110, result.tailMaximum);
+  TEST_ASSERT_EQUAL_UINT16(
+      AppConfig::HitDetection::TRIGGER_VALIDATION_SAMPLES -
+          AppConfig::HitDetection::TRIGGER_TAIL_START_SAMPLE,
+      result.tailActiveSamples);
 }
 
 void testValidationContinuesAcrossInputBlocks() {
@@ -287,20 +332,27 @@ void testValidationContinuesAcrossInputBlocks() {
   TEST_ASSERT_FALSE(firstResult.hitDetected);
 
   std::vector<uint16_t> secondBlock(AudioIo::BLOCK_FRAMES, 0);
-  secondBlock[0] = 350;
-  secondBlock[1] = 300;
-  secondBlock[2] = 250;
-  secondBlock[3] = 200;
-  secondBlock[4] = 170;
-  secondBlock[5] = 140;
-  secondBlock[6] = 110;
+  for (size_t sample = 0;
+       sample < AppConfig::HitDetection::TRIGGER_TAIL_START_SAMPLE - 1;
+       ++sample) {
+    secondBlock[sample] = 200;
+  }
+  for (size_t sample =
+           AppConfig::HitDetection::TRIGGER_TAIL_START_SAMPLE - 1;
+       sample < AppConfig::HitDetection::TRIGGER_VALIDATION_SAMPLES - 1;
+       ++sample) {
+    secondBlock[sample] = 110;
+  }
   const HitDetector::Result secondResult = HitDetector::process(
       secondBlock.data(), secondBlock.size(), TEST_CONTROLS.sensitivity);
 
   TEST_ASSERT_TRUE(secondResult.validationCompleted);
   TEST_ASSERT_TRUE(secondResult.hitDetected);
   TEST_ASSERT_EQUAL_UINT16(420, secondResult.validationMax);
-  TEST_ASSERT_EQUAL_UINT8(8, secondResult.activeSamples);
+  TEST_ASSERT_EQUAL_UINT16(
+      AppConfig::HitDetection::TRIGGER_VALIDATION_SAMPLES,
+      secondResult.activeSamples);
+  TEST_ASSERT_EQUAL_UINT16(110, secondResult.tailMaximum);
 }
 
 void testAcceptedHitStaysLockedOutUntilQuietBlock() {
@@ -599,7 +651,8 @@ void tearDown() {}
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(testSingleSampleElectricalSpikeIsRejected);
-  RUN_TEST(testLightPadTailIsAccepted);
+  RUN_TEST(testVoltageJumpWithWeakTailIsRejected);
+  RUN_TEST(testSustainedLightPadTailIsAccepted);
   RUN_TEST(testValidationContinuesAcrossInputBlocks);
   RUN_TEST(testAcceptedHitStaysLockedOutUntilQuietBlock);
   RUN_TEST(testClickIsSilentAtMinimumLevel);

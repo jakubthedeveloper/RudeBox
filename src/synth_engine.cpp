@@ -30,9 +30,14 @@ void reportTriggerValidation(const HitDetector::Result& result) {
                 ">validationMax:%u\n"
                 ">velocity:%.4f\n"
                 ">activeSamples:%u\n"
+                ">tailMaximum:%u\n"
+                ">tailActiveSamples:%u\n"
                 ">windowEnergy:%lu\n",
                 result.candidateStarted, result.hitDetected,
-                result.validationMax, result.velocity, result.activeSamples,
+                result.validationMax, result.velocity,
+                static_cast<unsigned>(result.activeSamples),
+                static_cast<unsigned>(result.tailMaximum),
+                static_cast<unsigned>(result.tailActiveSamples),
                 static_cast<unsigned long>(result.windowEnergy));
 }
 

@@ -11,6 +11,32 @@ namespace {
 constexpr uint8_t ADDRESS = 0x10;
 constexpr int PA_ENABLE_PIN = 21;
 
+constexpr uint8_t ADC_POWER_DOWN_LEFT_INPUT = 1U << 7;
+constexpr uint8_t ADC_POWER_DOWN_RIGHT_INPUT = 1U << 6;
+constexpr uint8_t ADC_POWER_DOWN_LEFT_CHANNEL = 1U << 5;
+constexpr uint8_t ADC_POWER_DOWN_RIGHT_CHANNEL = 1U << 4;
+constexpr uint8_t MICROPHONE_BIAS_POWER_DOWN = 1U << 3;
+constexpr uint8_t ADC_INTERNAL_LOW_POWER = 1U << 0;
+// Selects the codec's LINE2 pins. Some ESP32-A1S board revisions physically
+// couple onboard microphones to the same pins, which cannot be undone here.
+constexpr uint8_t LINE_INPUT_2_SELECTION = 0x50;
+
+constexpr uint8_t selectedLineInputAdcPower() {
+  const uint8_t unusedChannelPowerDown =
+      AppConfig::AudioInput::CHANNEL == AudioIo::Channel::Right
+          ? ADC_POWER_DOWN_LEFT_INPUT | ADC_POWER_DOWN_LEFT_CHANNEL
+          : ADC_POWER_DOWN_RIGHT_INPUT | ADC_POWER_DOWN_RIGHT_CHANNEL;
+  return unusedChannelPowerDown | MICROPHONE_BIAS_POWER_DOWN |
+         ADC_INTERNAL_LOW_POWER;
+}
+
+constexpr uint8_t SELECTED_LINE_INPUT_ADC_POWER =
+    selectedLineInputAdcPower();
+
+static_assert(
+    (SELECTED_LINE_INPUT_ADC_POWER & MICROPHONE_BIAS_POWER_DOWN) != 0,
+    "Microphone bias must remain powered down");
+
 TwoWire wire(1);
 
 struct Setting {
@@ -64,7 +90,7 @@ bool configureCodec() {
       {0x00, 0x12},        // Play/record clock profile.
       {0x03, 0xFF},        // ADC off while it is configured.
       {0x09, stereoGain},  // Left and right PGA gain.
-      {0x0A, 0x50},        // LINPUT2/RINPUT2: board LINE IN.
+      {0x0A, LINE_INPUT_2_SELECTION},  // LINPUT2/RINPUT2: board LINE IN.
       {0x0B, 0x02},        // Stereo ADC, data output enabled.
       {0x0C, 0x0C},        // Standard I2S, 16-bit.
       {0x0D, 0x02},        // MCLK/Fs = 256.
@@ -83,7 +109,8 @@ bool configureCodec() {
       {0x2B, 0x80},        // ADC and DAC share the same LRCK.
       {0x2E, 0x1E},        // LOUT1 analog volume: 0 dB.
       {0x30, 0x1E},        // LOUT2 analog volume: 0 dB.
-      {0x03, 0x09},        // ADC/line on, microphone bias off.
+      // Power only the selected line input and ADC; keep microphone bias off.
+      {0x03, SELECTED_LINE_INPUT_ADC_POWER},
       {0x04, 0x68},        // Power the left DAC and left output drivers only.
       {0x19, 0x22},        // Unmute the DAC and preserve its default control bits.
   };

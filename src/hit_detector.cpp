@@ -15,9 +15,11 @@ enum class State : uint8_t {
 };
 
 struct ValidationWindow {
-  uint8_t sampleCount;
-  uint8_t activeSamples;
+  uint16_t sampleCount;
+  uint16_t activeSamples;
   uint16_t maximum;
+  uint16_t tailMaximum;
+  uint16_t tailActiveSamples;
   uint32_t energy;
 };
 
@@ -36,6 +38,18 @@ static_assert(
     AppConfig::HitDetection::TRIGGER_MIN_ACTIVE_SAMPLES <=
         AppConfig::HitDetection::TRIGGER_VALIDATION_SAMPLES,
     "Required active samples must fit in the validation window");
+static_assert(
+    AppConfig::HitDetection::TRIGGER_TAIL_START_SAMPLE <
+        AppConfig::HitDetection::TRIGGER_VALIDATION_SAMPLES,
+    "Trigger tail must start inside the validation window");
+static_assert(
+    AppConfig::HitDetection::TRIGGER_MIN_TAIL_ACTIVE_SAMPLES <=
+        AppConfig::HitDetection::TRIGGER_VALIDATION_SAMPLES -
+            AppConfig::HitDetection::TRIGGER_TAIL_START_SAMPLE,
+    "Required tail samples must fit in the trigger tail");
+static_assert(AppConfig::HitDetection::TRIGGER_MIN_TAIL_PEAK_RATIO >= 0.0f &&
+                  AppConfig::HitDetection::TRIGGER_MIN_TAIL_PEAK_RATIO <= 1.0f,
+              "Trigger tail peak ratio must be normalized");
 static_assert(
     AppConfig::HitDetection::TRIGGER_FOLLOW_THRESHOLD <=
         AppConfig::HitDetection::TRIGGER_PRE_THRESHOLD,
@@ -115,11 +129,18 @@ void beginValidation(uint16_t magnitude) {
 }
 
 void collectValidationSample(uint16_t magnitude) {
+  const bool isTailSample =
+      validation.sampleCount >=
+      AppConfig::HitDetection::TRIGGER_TAIL_START_SAMPLE;
   ++validation.sampleCount;
   if (magnitude >= AppConfig::HitDetection::TRIGGER_FOLLOW_THRESHOLD) {
     ++validation.activeSamples;
+    if (isTailSample) ++validation.tailActiveSamples;
   }
   if (magnitude > validation.maximum) validation.maximum = magnitude;
+  if (isTailSample && magnitude > validation.tailMaximum) {
+    validation.tailMaximum = magnitude;
+  }
   validation.energy += magnitude;
 }
 
@@ -129,13 +150,25 @@ bool validationWindowIsComplete() {
 }
 
 bool validationWindowIsAccepted() {
-  return validation.activeSamples >=
-         AppConfig::HitDetection::TRIGGER_MIN_ACTIVE_SAMPLES;
+  const bool hasEnoughActiveSamples =
+      validation.activeSamples >=
+      AppConfig::HitDetection::TRIGGER_MIN_ACTIVE_SAMPLES;
+  const bool hasActiveTail =
+      validation.tailActiveSamples >=
+      AppConfig::HitDetection::TRIGGER_MIN_TAIL_ACTIVE_SAMPLES;
+  const bool retainsEnoughTailAmplitude =
+      validation.tailMaximum >=
+      validation.maximum *
+          AppConfig::HitDetection::TRIGGER_MIN_TAIL_PEAK_RATIO;
+  return hasEnoughActiveSamples && hasActiveTail &&
+         retainsEnoughTailAmplitude;
 }
 
 void copyValidationDiagnostics(Result& result) {
   result.validationMax = validation.maximum;
   result.activeSamples = validation.activeSamples;
+  result.tailMaximum = validation.tailMaximum;
+  result.tailActiveSamples = validation.tailActiveSamples;
   result.windowEnergy = validation.energy;
 }
 

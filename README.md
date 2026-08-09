@@ -32,6 +32,34 @@ The firmware is organized from general application flow to hardware and signal p
 - `user_interface.cpp` owns the UI lifecycle and exposes current synth controls; it delegates potentiometer details to `synth_control_input.cpp` and maps accepted-hit velocity to sensitivity LED brightness and decay.
 - `audio_io.cpp`, `ads7830.cpp`, and `es8388.cpp` contain hardware-level details.
 
+## Pad input wiring
+
+The drum pad is connected to the ESP32 LINE IN through the following input protection and filtering circuit:
+
+```text
+PAD TIP
+   o
+   |
+ [100k]
+   |
+   +---------- SIGNAL ----------||----------> ESP32 LINE IN
+   |                            100nF
+   |
+ [10k]
+   |
+  GND
+
+SIGNAL ----||---- GND
+           1nF
+
+SIGNAL ----|>|----+
+                  |
+SIGNAL ----|<|----+---- GND
+       Schottky clamps
+
+PAD SLEEVE ---------------------------- GND
+```
+
 ## User interface
 
 ### Potentiometers
@@ -49,18 +77,31 @@ The tested board is labeled `ADS7830 STEMMA QT`. Its working reference wiring is
 - `Ext Ref` solder jumper: closed,
 - `Ext Com` solder jumper: closed.
 
-With the `Ext Com` jumper closed, the working setup uses the board's COM connection and leaves the external COM pin unconnected. Each 10kΩ potentiometer is used as a voltage divider between 3.3V and GND, with its wiper connected through a 1kΩ series resistor to its ADS7830 input:
+With the `Ext Com` jumper closed, the working setup uses the board's COM connection and leaves the external COM pin unconnected. All 10kΩ potentiometers are wired in the same way, with a 680Ω series resistor and a 100nF capacitor filtering each wiper before its individual ADS7830 channel:
 
-- A0 — sensitivity of the pad peak-to-velocity response,
-- A1 — base oscillator pitch from 45 Hz to 1200 Hz,
-- A2 — pitch-drop depth from 0 to 4.5 octaves,
-- A3 — level of the short attack click from off to maximum,
-- A4 — influence of hit velocity on oscillator amplitude, from a constant 55% gain to full velocity dynamics; hard hits therefore become louder as A4 is increased.
-- A5 — oscillator shape: triangle at minimum, square at the midpoint, and an 8% pulse at maximum.
-- A6 — exponential main-envelope decay from 30 ms to 2400 ms.
-- A7 — PITCH VEL depth from 0 to 36 semitones at maximum hit velocity.
+```text
+POT left leg  ---- GND
+POT right leg ---- 3.3V
 
-All channels are sampled every 5 ms. An EMA filter and a two-count dead zone stabilize the native 8-bit readings. Pitch and decay use exponential mapping, while pitch-drop uses a squared curve for finer control near zero. Trigger acceptance is determined by the short eight-sample impulse-shape window, but velocity is mapped from the full peak captured across the audio block so a rising impulse is not reduced to its early threshold-crossing level. Every control maps a higher ADC reading to a higher control value. A3 controls only the click level; the click retains a fixed mild velocity response and its own fixed 8 ms decay. A4 controls only the main oscillator and does not alter either envelope duration. A5 affects only the main oscillator waveform and is applied at control rate while a voice is sounding. A6 is captured on each trigger and controls both the main amplitude envelope and pitch envelope without changing an already sounding voice. A7 is captured on the trigger and multiplies its selected pitch-envelope depth by hit velocity, producing a larger sweep for a stronger hit.
+POT wiper ----[680R]----+------> ADS7830 CHx
+                        |
+                       === 100nF
+                        |
+                       GND
+```
+
+`CHx` is a different ADS7830 input for each potentiometer. The GND and 3.3V rails are daisy-chained from one potentiometer to the next across the complete set. The channels and their mappings are:
+
+- A0 — SENSITIVITY: controls the pad peak-to-velocity response from harder at minimum to more responsive at maximum by changing both the response curve and the input peak that maps to maximum velocity.
+- A1 — PITCH: selects the base oscillator frequency from 45 Hz to 1200 Hz using an exponential mapping.
+- A2 — PITCH DROP: selects a pitch-envelope depth from 0 to 4.5 octaves using a squared mapping for finer adjustment near zero. The depth is scaled from 65% for a zero-velocity hit to 100% for a maximum-velocity hit.
+- A3 — CLICK: controls the level of the fixed 8 ms noise transient from off to its configured maximum. Hit velocity separately scales the click from 50% to 100% of the selected level.
+- A4 — AMP VEL: controls the influence of hit velocity on main-oscillator amplitude, from a constant 55% gain at minimum to full velocity dynamics at maximum. In the full-dynamics position, the oscillator reaches full gain at velocity 0.9.
+- A5 — SHAPE: morphs the main oscillator from triangle at minimum through square at the midpoint to an 8% pulse at maximum.
+- A6 — DECAY: selects the exponential main-envelope duration from 30 ms to 2400 ms. The selected duration is used by both amplitude and pitch envelopes.
+- A7 — PITCH VEL: selects an additional velocity-sensitive pitch-envelope depth from 0 to 36 semitones. The contribution used for a hit is the selected depth multiplied by that hit's normalized velocity, so at the maximum setting it ranges from 0 semitones for velocity 0 to 36 semitones (three octaves) for velocity 1. It is added to the A2 PITCH DROP depth: the oscillator starts above the A1 base pitch by their combined amount and falls back toward the base pitch with the A6 decay, subject to the 8 kHz frequency cap.
+
+All channels are sampled every 5 ms. An EMA filter and a two-count dead zone stabilize the native 8-bit readings. Every control maps a higher ADC reading to a higher control value. Trigger acceptance is determined by the short eight-sample impulse-shape window, but velocity is mapped from the full peak captured across the audio block so a rising impulse is not reduced to its early threshold-crossing level. A0 is used when mapping each accepted hit, and A5 is applied at control rate so it can change the waveform while a voice is sounding. The sound parameters from A1, A2, A3, A4, A6, and A7 are captured when a hit triggers and do not modify an already sounding voice. A3 controls only the click, which retains its own fixed 8 ms decay, while A4 controls only the main oscillator amplitude and does not alter either envelope duration.
 
 ### Sensitivity LED
 
@@ -74,9 +115,10 @@ Serial output categories can be enabled independently in the `AppConfig::Diagnos
 
 - `AppConfig::Diagnostics::LOG_AUDIO_PEAKS` — streams ES8388 input peaks in Teleplot format as `rawPeak`,
 - `AppConfig::Diagnostics::LOG_TRIGGER_VALIDATION` — reports `triggerCandidate`, `triggerAccepted`, `validationMax`, final mapped `velocity`, `activeSamples`, and `windowEnergy` when a candidate starts or a validation finishes,
-- `AppConfig::Controls::LOG_CONTROL_VALUES` — prints throttled filtered and mapped potentiometer values.
+- `AppConfig::Controls::LOG_CONTROL_VALUES` — prints throttled filtered and mapped potentiometer values,
+- `AppConfig::Diagnostics::LOG_FATAL_ERRORS` — reports a fatal hardware-initialization failure before stopping the application.
 
-Audio-peak and trigger-validation diagnostics are disabled by default. Validation details are event-driven rather than sent for every audio block, which limits their timing impact. Control logging is currently enabled and prints all eight filtered ADC values plus the mapped control values, including `shape`, `decay_ms`, and the maximum `env_to_pitch` depth in semitones. Fatal initialization errors are always printed.
+All logging categories are disabled by default, and the serial port is not initialized while they remain disabled. A fatal initialization failure therefore stops the application silently in the default configuration. When enabled, validation details are event-driven rather than sent for every audio block, which limits their timing impact. Control logging prints all eight filtered ADC values plus the mapped control values, including `shape`, `decay_ms`, and the maximum `env_to_pitch` depth in semitones.
 
 For tuning, an isolated electrical spike should normally show `activeSamples:1` and `triggerAccepted:0`. A pad hit should retain all eight samples at or above the follow threshold and show `triggerAccepted:1`. Compare `rawPeak` with the resulting `velocity` for light, medium, and strong hits when calibrating `PAD_INPUT_MIN`, `PAD_INPUT_MAX`, and SENSITIVITY. `validationMax` and `windowEnergy` describe only the short acceptance window and do not determine hit strength after acceptance. `windowEnergy` is diagnostic; it is not part of the acceptance condition.
 
@@ -119,7 +161,7 @@ Build and upload the firmware:
 pio run -t upload
 ```
 
-To use the serial output, select the board serial port and use `115200` baud. For Teleplot peak monitoring, enable `AppConfig::Diagnostics::LOG_AUDIO_PEAKS`. Keep `AppConfig::Diagnostics::LOG_TRIGGER_VALIDATION` enabled while tuning the filter, then disable either stream independently if it is no longer needed.
+Serial output is disabled by default. To use it for diagnostics, enable the required logging category in `include/app_config.h`, select the board serial port, and use `115200` baud. `LOG_AUDIO_PEAKS` provides Teleplot peak monitoring, `LOG_TRIGGER_VALIDATION` helps tune the trigger filter, `LOG_CONTROL_VALUES` reports the ADC controls, and `LOG_FATAL_ERRORS` reports hardware-initialization failures.
 
 ## Audio signal-path tests
 

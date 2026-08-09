@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 
+#include "app_config.h"
 #include "audio_io.h"
 #include "es8388.h"
 #include "synth_engine.h"
@@ -11,11 +12,18 @@ namespace Application {
 namespace {
 
 void stop(const char* message) {
-  Serial.println(message);
+  if (AppConfig::Diagnostics::LOG_FATAL_ERRORS) Serial.println(message);
   while (true) delay(1000);
 }
 
 void initializeSerial() {
+  if (!AppConfig::Diagnostics::LOG_AUDIO_PEAKS &&
+      !AppConfig::Diagnostics::LOG_TRIGGER_VALIDATION &&
+      !AppConfig::Diagnostics::LOG_FATAL_ERRORS &&
+      !AppConfig::Controls::LOG_CONTROL_VALUES) {
+    return;
+  }
+
   Serial.begin(115200);
   delay(500);
 }

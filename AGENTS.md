@@ -10,3 +10,17 @@
 - After every change, review `README.md` and update it whenever the behavior, configuration, architecture, setup, or usage has changed.
 - Keep Markdown paragraphs and list items on a single source line. Do not insert hard line breaks in the middle of sentences or wrap prose to a fixed column width.
 - Write all source code, identifiers, comments, and documentation in English.
+
+## Filesystem boundaries
+
+Do not inspect, search, read, modify, or enumerate files outside this repository
+unless I explicitly ask you to do so.
+
+In particular, do not access:
+- ~/Desktop
+- ~/Documents
+- ~/Downloads
+- other repositories
+- arbitrary files in my home directory
+
+If a file outside the repository appears relevant, ask me for permission first.

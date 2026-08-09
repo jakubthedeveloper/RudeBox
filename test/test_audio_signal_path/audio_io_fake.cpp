@@ -4,6 +4,7 @@
 
 #include <deque>
 
+#include "app_config.h"
 #include "audio_io.h"
 
 namespace {
@@ -30,6 +31,18 @@ void simulatePadImpulse(uint16_t peak) {
   magnitudes[5] = static_cast<uint16_t>(peak * 45U / 100U);
   magnitudes[6] = static_cast<uint16_t>(peak * 40U / 100U);
   magnitudes[7] = static_cast<uint16_t>(peak * 35U / 100U);
+  inputBlocks.push_back(magnitudes);
+}
+
+void simulateRisingPadImpulse(uint16_t peak) {
+  std::vector<uint16_t> magnitudes(AudioIo::BLOCK_FRAMES, 0);
+  for (size_t sample = 0;
+       sample < AppConfig::HitDetection::TRIGGER_VALIDATION_SAMPLES;
+       ++sample) {
+    magnitudes[sample] = static_cast<uint16_t>(
+        AppConfig::HitDetection::TRIGGER_PRE_THRESHOLD + sample * 8U);
+  }
+  magnitudes[AppConfig::HitDetection::TRIGGER_VALIDATION_SAMPLES + 4] = peak;
   inputBlocks.push_back(magnitudes);
 }
 

@@ -9,9 +9,11 @@
 #include "audio_io.h"
 #include "audio_io_fake.h"
 #include "hit_detector.h"
+#include "sensitivity_svg.h"
 #include "synth_controls.h"
 #include "synth_engine.h"
 #include "synth_voice.h"
+#include "waveforms.h"
 #include "waveform_svg.h"
 
 HardwareSerial Serial;
@@ -24,6 +26,9 @@ constexpr SynthControls TEST_CONTROLS = {
     1.0f,
     0.0f,
     1.0f,
+    0.0f,
+    300.0f,
+    0.0f,
 };
 
 constexpr SynthControls MIXED_CLICK_CONTROLS = {
@@ -32,14 +37,29 @@ constexpr SynthControls MIXED_CLICK_CONTROLS = {
     1.0f,
     1.0f,
     0.0f,
+    0.0f,
+    300.0f,
+    0.0f,
 };
 
-constexpr size_t RELEASE_SAMPLE_COUNT = static_cast<size_t>(
-    AudioIo::SAMPLE_RATE * AppConfig::Voice::AMP_RELEASE_MS / 1000.0f);
-constexpr size_t RENDER_BLOCK_COUNT =
-    (RELEASE_SAMPLE_COUNT + AudioIo::BLOCK_FRAMES - 1) /
-        AudioIo::BLOCK_FRAMES +
-    1;
+constexpr uint16_t WEAK_RISING_PEAK =
+    AppConfig::HitDetection::PAD_INPUT_MIN +
+    (AppConfig::HitDetection::PAD_INPUT_MAX -
+     AppConfig::HitDetection::PAD_INPUT_MIN) /
+        50;
+constexpr uint16_t STRONG_RISING_PEAK =
+    AppConfig::HitDetection::PAD_INPUT_MIN +
+    (AppConfig::HitDetection::PAD_INPUT_MAX -
+     AppConfig::HitDetection::PAD_INPUT_MIN) *
+        9 / 10;
+
+size_t renderBlockCount(float decayMs) {
+  const size_t releaseSampleCount = static_cast<size_t>(
+      AudioIo::SAMPLE_RATE * decayMs / 1000.0f);
+  return (releaseSampleCount + AudioIo::BLOCK_FRAMES - 1) /
+             AudioIo::BLOCK_FRAMES +
+         1;
+}
 
 struct HitScenario {
   const char* name;
@@ -52,6 +72,11 @@ struct HitScenario {
 struct RenderResult {
   bool hitDetected;
   bool unexpectedRetrigger;
+  std::vector<int16_t> outputSamples;
+};
+
+struct VelocityRenderResult {
+  float velocity;
   std::vector<int16_t> outputSamples;
 };
 
@@ -83,7 +108,8 @@ RenderResult renderPadHit(
   const bool hitDetected =
       SynthEngine::processAudioBlock(controls).hitDetected;
   bool unexpectedRetrigger = false;
-  for (size_t block = 1; block < RENDER_BLOCK_COUNT; ++block) {
+  const size_t blockCount = renderBlockCount(controls.decayMs);
+  for (size_t block = 1; block < blockCount; ++block) {
     if (SynthEngine::processAudioBlock(controls).hitDetected) {
       unexpectedRetrigger = true;
     }
@@ -94,6 +120,19 @@ RenderResult renderPadHit(
       unexpectedRetrigger,
       FakeAudioIo::writtenSamples(),
   };
+}
+
+VelocityRenderResult renderRisingPadHit(uint16_t peak,
+                                        const SynthControls& controls) {
+  resetHitDetector(controls.sensitivity);
+  FakeAudioIo::reset();
+  FakeAudioIo::simulateRisingPadImpulse(peak);
+
+  const SynthEngine::ProcessResult result =
+      SynthEngine::processAudioBlock(controls);
+  TEST_ASSERT_TRUE_MESSAGE(result.hitDetected,
+                           "The rising pad impulse did not trigger a hit");
+  return {result.velocity, FakeAudioIo::writtenSamples()};
 }
 
 int16_t findOutputPeak(const std::vector<int16_t>& samples) {
@@ -133,8 +172,9 @@ void verifyAudioPath(const HitScenario& scenario) {
   TEST_ASSERT_FALSE_MESSAGE(
       result.unexpectedRetrigger,
       "One pad impulse triggered the voice more than once");
-  TEST_ASSERT_EQUAL_UINT32(RENDER_BLOCK_COUNT * AudioIo::BLOCK_FRAMES,
-                           result.outputSamples.size());
+  TEST_ASSERT_EQUAL_UINT32(
+      renderBlockCount(TEST_CONTROLS.decayMs) * AudioIo::BLOCK_FRAMES,
+      result.outputSamples.size());
   TEST_ASSERT_EQUAL_INT16(0, result.outputSamples.back());
 
   const int16_t outputPeak = findOutputPeak(result.outputSamples);
@@ -147,17 +187,28 @@ void verifyAudioPath(const HitScenario& scenario) {
 }
 
 void testWeakPadHit() {
-  verifyAudioPath({"weak", "Audio path - weak pad hit", 300, 300, 450});
+  constexpr uint16_t WEAK_PEAK =
+      AppConfig::HitDetection::PAD_INPUT_MIN +
+      (AppConfig::HitDetection::PAD_INPUT_MAX -
+       AppConfig::HitDetection::PAD_INPUT_MIN) /
+          10;
+  verifyAudioPath(
+      {"weak", "Audio path - weak pad hit", WEAK_PEAK, 700, 900});
 }
 
 void testMediumPadHit() {
-  verifyAudioPath(
-      {"medium", "Audio path - medium pad hit", 1560, 6900, 7300});
+  constexpr uint16_t MEDIUM_PEAK =
+      AppConfig::HitDetection::PAD_INPUT_MIN +
+      (AppConfig::HitDetection::PAD_INPUT_MAX -
+       AppConfig::HitDetection::PAD_INPUT_MIN) /
+          2;
+  verifyAudioPath({"medium", "Audio path - medium pad hit", MEDIUM_PEAK,
+                   6900, 7400});
 }
 
 void testMaximumPadHit() {
-  verifyAudioPath(
-      {"maximum", "Audio path - maximum pad hit", 3000, 15500, 16500});
+  verifyAudioPath({"maximum", "Audio path - maximum pad hit",
+                   AppConfig::HitDetection::PAD_INPUT_MAX, 15500, 16500});
 }
 
 void testMixedClickAndVoiceArtifact() {
@@ -285,7 +336,8 @@ std::vector<int16_t> renderClickEnvelope() {
   const size_t blockCount =
       (sampleCount + AudioIo::BLOCK_FRAMES - 1) / AudioIo::BLOCK_FRAMES;
 
-  SynthVoice::trigger(1.0f, 0.0f, 0.0f, 1.0f, 1.0f);
+  SynthVoice::trigger(1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 300.0f,
+                      0.0f);
   std::vector<int16_t> samples;
   samples.reserve(sampleCount);
   for (size_t block = 0; block < blockCount; ++block) {
@@ -326,7 +378,8 @@ void writeClickEnvelopeArtifact(const std::vector<int16_t>& samples) {
 }
 
 void testClickIsSilentAtMinimumLevel() {
-  SynthVoice::trigger(1.0f, 0.0f, 0.0f, 0.0f, 1.0f);
+  SynthVoice::trigger(1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 300.0f,
+                      0.0f);
   TEST_ASSERT_FALSE(blockContainsNonZeroSample(SynthVoice::render()));
 }
 
@@ -341,7 +394,8 @@ void testClickDecaysAndCanBeRetriggered() {
       samples, clickDecaySamples + 1, samples.size()));
   writeClickEnvelopeArtifact(samples);
 
-  SynthVoice::trigger(0.0f, 0.0f, 0.0f, 1.0f, 1.0f);
+  SynthVoice::trigger(0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 300.0f,
+                      0.0f);
   TEST_ASSERT_TRUE(blockContainsNonZeroSample(SynthVoice::render()));
 }
 
@@ -349,28 +403,191 @@ void testAmpVelocityInterpolatesBetweenConstantAndFullDynamics() {
   constexpr float VELOCITY = 0.2f;
   constexpr float QUARTER_SAMPLE_RATE = AudioIo::SAMPLE_RATE / 4.0f;
 
-  SynthVoice::trigger(VELOCITY, QUARTER_SAMPLE_RATE, 0.0f, 0.0f, 0.0f);
+  SynthVoice::trigger(VELOCITY, QUARTER_SAMPLE_RATE, 0.0f, 0.0f, 0.0f,
+                      0.0f, 300.0f, 0.0f);
   const int32_t constantAmplitude = SynthVoice::render()[1];
 
-  SynthVoice::trigger(VELOCITY, QUARTER_SAMPLE_RATE, 0.0f, 0.0f, 1.0f);
+  SynthVoice::trigger(VELOCITY, QUARTER_SAMPLE_RATE, 0.0f, 0.0f, 1.0f,
+                      0.0f, 300.0f, 0.0f);
   const int32_t velocityAmplitude = SynthVoice::render()[1];
 
-  TEST_ASSERT_TRUE(constantAmplitude > velocityAmplitude * 4.4f);
-  TEST_ASSERT_TRUE(constantAmplitude < velocityAmplitude * 4.6f);
+  TEST_ASSERT_TRUE(constantAmplitude > velocityAmplitude * 2.4f);
+  TEST_ASSERT_TRUE(constantAmplitude < velocityAmplitude * 2.6f);
 }
 
-void testStrongHitLevelMatchesConstantAmplitude() {
+void testStrongHitIsLouderWithFullAmpVelocity() {
   constexpr float QUARTER_SAMPLE_RATE = AudioIo::SAMPLE_RATE / 4.0f;
 
   SynthVoice::trigger(AppConfig::Voice::AMP_VELOCITY_FULL_SCALE,
-                      QUARTER_SAMPLE_RATE, 0.0f, 0.0f, 0.0f);
+                      QUARTER_SAMPLE_RATE, 0.0f, 0.0f, 0.0f, 0.0f, 300.0f,
+                      0.0f);
   const int32_t constantAmplitude = SynthVoice::render()[1];
 
   SynthVoice::trigger(AppConfig::Voice::AMP_VELOCITY_FULL_SCALE,
-                      QUARTER_SAMPLE_RATE, 0.0f, 0.0f, 1.0f);
+                      QUARTER_SAMPLE_RATE, 0.0f, 0.0f, 1.0f, 0.0f, 300.0f,
+                      0.0f);
   const int32_t fullVelocityAmplitude = SynthVoice::render()[1];
 
-  TEST_ASSERT_EQUAL_INT32(constantAmplitude, fullVelocityAmplitude);
+  TEST_ASSERT_TRUE(fullVelocityAmplitude > constantAmplitude * 1.8f);
+  TEST_ASSERT_TRUE(fullVelocityAmplitude < constantAmplitude * 1.85f);
+}
+
+void testShapeMorphEndpointsAndPulseWidth() {
+  TEST_ASSERT_FLOAT_WITHIN(0.0001f, Waveforms::triangle(0.1f),
+                           Waveforms::shapedPulse(0.1f, 0.0f, 0.08f));
+  TEST_ASSERT_FLOAT_WITHIN(0.0001f, 1.0f,
+                           Waveforms::shapedPulse(0.1f, 0.5f, 0.08f));
+  TEST_ASSERT_FLOAT_WITHIN(0.0001f, -1.0f,
+                           Waveforms::shapedPulse(0.6f, 0.5f, 0.08f));
+  TEST_ASSERT_FLOAT_WITHIN(0.0001f, 1.0f,
+                           Waveforms::shapedPulse(0.07f, 1.0f, 0.08f));
+  TEST_ASSERT_FLOAT_WITHIN(0.0001f, -1.0f,
+                           Waveforms::shapedPulse(0.09f, 1.0f, 0.08f));
+}
+
+size_t firstNegativeSample(const int32_t* samples) {
+  for (size_t sample = 0; sample < AudioIo::BLOCK_FRAMES; ++sample) {
+    if (samples[sample] < 0) return sample;
+  }
+  return AudioIo::BLOCK_FRAMES;
+}
+
+size_t firstNegativeOutputSample(const std::vector<int16_t>& samples) {
+  for (size_t sample = 0; sample < samples.size(); ++sample) {
+    if (samples[sample] < 0) return sample;
+  }
+  return samples.size();
+}
+
+void testPitchVelocityRespondsStronglyToHitStrength() {
+  constexpr float BASE_FREQUENCY_HZ = 200.0f;
+  SynthVoice::trigger(0.0f, BASE_FREQUENCY_HZ, 0.0f, 0.0f, 0.0f, 0.5f,
+                      300.0f,
+                      AppConfig::Controls::ENV_TO_PITCH_MAX_SEMITONES);
+  const size_t weakHitTransition = firstNegativeSample(SynthVoice::render());
+
+  SynthVoice::trigger(1.0f, BASE_FREQUENCY_HZ, 0.0f, 0.0f, 0.0f, 0.5f,
+                      300.0f,
+                      AppConfig::Controls::ENV_TO_PITCH_MAX_SEMITONES);
+  const size_t strongHitTransition =
+      firstNegativeSample(SynthVoice::render());
+
+  TEST_ASSERT_TRUE(weakHitTransition > 100);
+  TEST_ASSERT_TRUE(strongHitTransition < 20);
+}
+
+void testMaximumClickHasClearTransientLevel() {
+  SynthVoice::trigger(1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 300.0f,
+                      0.0f);
+  const int32_t* samples = SynthVoice::render();
+  int32_t peak = 0;
+  for (size_t sample = 0; sample < AudioIo::BLOCK_FRAMES; ++sample) {
+    const int32_t magnitude = samples[sample] < 0 ? -samples[sample]
+                                                  : samples[sample];
+    if (magnitude > peak) peak = magnitude;
+  }
+  TEST_ASSERT_TRUE(peak > 18000);
+}
+
+void testAmpVelocityUsesFullRisingImpulsePeak() {
+  SynthControls controls = TEST_CONTROLS;
+  controls.sensitivity = 0.0f;
+  controls.pitchDropOctaves = 0.0f;
+  controls.clickLevel = 0.0f;
+  controls.ampVelocity = 1.0f;
+  controls.shapeNormalized = 0.5f;
+  controls.envToPitchSemitones = 0.0f;
+
+  const VelocityRenderResult weak =
+      renderRisingPadHit(WEAK_RISING_PEAK, controls);
+  const VelocityRenderResult strong =
+      renderRisingPadHit(STRONG_RISING_PEAK, controls);
+  const int16_t weakPeak = findOutputPeak(weak.outputSamples);
+  const int16_t strongPeak = findOutputPeak(strong.outputSamples);
+
+  TEST_ASSERT_TRUE(strong.velocity > weak.velocity + 0.5f);
+  TEST_ASSERT_TRUE(strongPeak > weakPeak * 20);
+}
+
+void testPitchVelocityUsesFullRisingImpulsePeak() {
+  SynthControls controls = TEST_CONTROLS;
+  controls.sensitivity = 1.0f;
+  controls.pitchDropOctaves = 0.0f;
+  controls.clickLevel = 0.0f;
+  controls.ampVelocity = 0.0f;
+  controls.shapeNormalized = 0.5f;
+  controls.envToPitchSemitones =
+      AppConfig::Controls::ENV_TO_PITCH_MAX_SEMITONES;
+
+  const VelocityRenderResult weak =
+      renderRisingPadHit(WEAK_RISING_PEAK, controls);
+  const VelocityRenderResult strong =
+      renderRisingPadHit(STRONG_RISING_PEAK, controls);
+  const size_t weakTransition =
+      firstNegativeOutputSample(weak.outputSamples);
+  const size_t strongTransition =
+      firstNegativeOutputSample(strong.outputSamples);
+
+  TEST_ASSERT_TRUE(strong.velocity > weak.velocity + 0.7f);
+  TEST_ASSERT_TRUE(weakTransition > strongTransition * 4);
+}
+
+void testSensitivityCurvesAndExportArtifacts() {
+  constexpr float MINIMUM_SENSITIVITY = 0.0f;
+  constexpr float MAXIMUM_SENSITIVITY = 1.0f;
+  const uint16_t middlePeak = AppConfig::HitDetection::PAD_INPUT_MAX / 2;
+  const float lowSensitivityVelocity =
+      HitDetector::mapVelocity(middlePeak, MINIMUM_SENSITIVITY);
+  const float highSensitivityVelocity =
+      HitDetector::mapVelocity(middlePeak, MAXIMUM_SENSITIVITY);
+
+  TEST_ASSERT_FLOAT_WITHIN(
+      0.0001f, 0.0f,
+      HitDetector::mapVelocity(AppConfig::HitDetection::PAD_INPUT_MIN,
+                               MINIMUM_SENSITIVITY));
+  TEST_ASSERT_TRUE(highSensitivityVelocity > lowSensitivityVelocity * 2.5f);
+  TEST_ASSERT_FLOAT_WITHIN(
+      0.0001f, 1.0f,
+      HitDetector::mapVelocity(
+          static_cast<uint16_t>(
+              AppConfig::HitDetection::VELOCITY_EFFECTIVE_MAX_AT_MIN_SENSITIVITY),
+          MINIMUM_SENSITIVITY));
+  TEST_ASSERT_FLOAT_WITHIN(
+      0.0001f, 1.0f,
+      HitDetector::mapVelocity(
+          static_cast<uint16_t>(
+              AppConfig::HitDetection::VELOCITY_EFFECTIVE_MAX_AT_MAX_SENSITIVITY),
+          MAXIMUM_SENSITIVITY));
+
+  TEST_ASSERT_TRUE_MESSAGE(
+      SensitivitySvg::write(artifactDirectory() / "sensitivity_minimum.svg",
+                            "Sensitivity response - minimum",
+                            MINIMUM_SENSITIVITY),
+      "Could not write the minimum sensitivity SVG artifact");
+  TEST_ASSERT_TRUE_MESSAGE(
+      SensitivitySvg::write(artifactDirectory() / "sensitivity_maximum.svg",
+                            "Sensitivity response - maximum",
+                            MAXIMUM_SENSITIVITY),
+      "Could not write the maximum sensitivity SVG artifact");
+}
+
+void testDecayControlsMainVoiceDuration() {
+  const size_t minimumDecayBlocks =
+      renderBlockCount(AppConfig::Controls::DECAY_MIN_MS);
+
+  SynthVoice::trigger(1.0f, 200.0f, 0.0f, 0.0f, 1.0f, 0.5f,
+                      AppConfig::Controls::DECAY_MIN_MS, 0.0f);
+  for (size_t block = 0; block < minimumDecayBlocks; ++block) {
+    SynthVoice::render();
+  }
+  TEST_ASSERT_FALSE(blockContainsNonZeroSample(SynthVoice::render()));
+
+  SynthVoice::trigger(1.0f, 200.0f, 0.0f, 0.0f, 1.0f, 0.5f,
+                      AppConfig::Controls::DECAY_MAX_MS, 0.0f);
+  for (size_t block = 0; block < minimumDecayBlocks; ++block) {
+    SynthVoice::render();
+  }
+  TEST_ASSERT_TRUE(blockContainsNonZeroSample(SynthVoice::render()));
 }
 
 }  // namespace
@@ -388,7 +605,14 @@ int main(int, char**) {
   RUN_TEST(testClickIsSilentAtMinimumLevel);
   RUN_TEST(testClickDecaysAndCanBeRetriggered);
   RUN_TEST(testAmpVelocityInterpolatesBetweenConstantAndFullDynamics);
-  RUN_TEST(testStrongHitLevelMatchesConstantAmplitude);
+  RUN_TEST(testStrongHitIsLouderWithFullAmpVelocity);
+  RUN_TEST(testShapeMorphEndpointsAndPulseWidth);
+  RUN_TEST(testPitchVelocityRespondsStronglyToHitStrength);
+  RUN_TEST(testMaximumClickHasClearTransientLevel);
+  RUN_TEST(testAmpVelocityUsesFullRisingImpulsePeak);
+  RUN_TEST(testPitchVelocityUsesFullRisingImpulsePeak);
+  RUN_TEST(testSensitivityCurvesAndExportArtifacts);
+  RUN_TEST(testDecayControlsMainVoiceDuration);
   RUN_TEST(testWeakPadHit);
   RUN_TEST(testMediumPadHit);
   RUN_TEST(testMaximumPadHit);

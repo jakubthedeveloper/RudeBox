@@ -28,10 +28,11 @@ void reportTriggerValidation(const HitDetector::Result& result) {
   Serial.printf(">triggerCandidate:%u\n"
                 ">triggerAccepted:%u\n"
                 ">validationMax:%u\n"
+                ">velocity:%.4f\n"
                 ">activeSamples:%u\n"
                 ">windowEnergy:%lu\n",
                 result.candidateStarted, result.hitDetected,
-                result.validationMax, result.activeSamples,
+                result.validationMax, result.velocity, result.activeSamples,
                 static_cast<unsigned long>(result.windowEnergy));
 }
 
@@ -41,7 +42,8 @@ ProcessResult triggerVoiceForDetectedPadHit(const HitDetector::Result& result,
 
   SynthVoice::trigger(result.velocity, controls.oscPitchHz,
                       controls.pitchDropOctaves, controls.clickLevel,
-                      controls.ampVelocity);
+                      controls.ampVelocity, controls.shapeNormalized,
+                      controls.decayMs, controls.envToPitchSemitones);
   return {true, result.velocity};
 }
 
@@ -65,6 +67,7 @@ void renderAudioOutput() {
 }  // namespace
 
 ProcessResult processAudioBlock(const SynthControls& controls) {
+  SynthVoice::setShape(controls.shapeNormalized);
   const ProcessResult result = processAudioInput(controls);
   renderAudioOutput();
   return result;

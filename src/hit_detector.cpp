@@ -50,7 +50,6 @@ void collectValidationSample(uint16_t magnitude);
 bool validationWindowIsComplete();
 bool validationWindowIsAccepted();
 void copyValidationDiagnostics(Result& result);
-float velocityFromPeak(uint16_t peak, float sensitivity);
 
 }  // namespace
 
@@ -85,7 +84,13 @@ Result process(const uint16_t* magnitudes, size_t sampleCount,
 
     state = State::LockedOut;
     result.hitDetected = true;
-    result.velocity = velocityFromPeak(validation.maximum, sensitivity);
+  }
+
+  if (result.hitDetected) {
+    const uint16_t capturedPeak =
+        result.rawPeak > validation.maximum ? result.rawPeak
+                                            : validation.maximum;
+    result.velocity = mapVelocity(capturedPeak, sensitivity);
   }
 
   if (state == State::Validating && result.candidateStarted &&
@@ -134,7 +139,9 @@ void copyValidationDiagnostics(Result& result) {
   result.windowEnergy = validation.energy;
 }
 
-float velocityFromPeak(uint16_t peak, float sensitivity) {
+}  // namespace
+
+float mapVelocity(uint16_t peak, float sensitivity) {
   const float normalizedSensitivity = MathUtils::clamp01(sensitivity);
   const float effectiveMax = MathUtils::lerp(
       AppConfig::HitDetection::VELOCITY_EFFECTIVE_MAX_AT_MIN_SENSITIVITY,
@@ -149,7 +156,5 @@ float velocityFromPeak(uint16_t peak, float sensitivity) {
       normalizedSensitivity);
   return MathUtils::clamp01(powf(linearVelocity, curveExponent));
 }
-
-}  // namespace
 
 }  // namespace HitDetector

@@ -8,7 +8,7 @@ The firmware currently:
 - validates each trigger candidate from the shape of an eight-sample impulse window and rejects isolated electrical spikes,
 - maps accepted peaks into normalized velocity using a sensitivity control,
 - triggers one monophonic synth-drum voice per hit,
-- generates a triangle waveform with amplitude and pitch envelopes and mixes in a short noise click at the start of each accepted hit,
+- morphs the main oscillator continuously from triangle through square to a narrow pulse, applies shared exponential amplitude and pitch envelopes, and mixes in a short independent noise click at the start of each accepted hit,
 - applies output headroom and final brickwall limiting,
 - sends the synthesized mono signal to the left audio output,
 - streams the measured input peak and trigger-validation diagnostics to Teleplot,
@@ -55,9 +55,12 @@ With the `Ext Com` jumper closed, the working setup uses the board's COM connect
 - A1 — base oscillator pitch from 45 Hz to 1200 Hz,
 - A2 — pitch-drop depth from 0 to 4.5 octaves,
 - A3 — level of the short attack click from off to maximum,
-- A4 — influence of hit velocity on oscillator amplitude, from constant amplitude to full velocity dynamics.
+- A4 — influence of hit velocity on oscillator amplitude, from a constant 55% gain to full velocity dynamics; hard hits therefore become louder as A4 is increased.
+- A5 — oscillator shape: triangle at minimum, square at the midpoint, and an 8% pulse at maximum.
+- A6 — exponential main-envelope decay from 30 ms to 2400 ms.
+- A7 — PITCH VEL depth from 0 to 36 semitones at maximum hit velocity.
 
-All channels are sampled every 5 ms. An EMA filter and a two-count dead zone stabilize the native 8-bit readings. Pitch uses exponential mapping, while pitch-drop uses a squared curve for finer control near zero. Trigger acceptance is determined by the short impulse-shape window, and the sensitivity control maps the accepted window maximum to velocity. Every control maps a higher ADC reading to a higher control value. A3 controls only the click level; the click retains a fixed mild velocity response. A4 controls only the main oscillator and does not alter either envelope duration.
+All channels are sampled every 5 ms. An EMA filter and a two-count dead zone stabilize the native 8-bit readings. Pitch and decay use exponential mapping, while pitch-drop uses a squared curve for finer control near zero. Trigger acceptance is determined by the short eight-sample impulse-shape window, but velocity is mapped from the full peak captured across the audio block so a rising impulse is not reduced to its early threshold-crossing level. Every control maps a higher ADC reading to a higher control value. A3 controls only the click level; the click retains a fixed mild velocity response and its own fixed 8 ms decay. A4 controls only the main oscillator and does not alter either envelope duration. A5 affects only the main oscillator waveform and is applied at control rate while a voice is sounding. A6 is captured on each trigger and controls both the main amplitude envelope and pitch envelope without changing an already sounding voice. A7 is captured on the trigger and multiplies its selected pitch-envelope depth by hit velocity, producing a larger sweep for a stronger hit.
 
 ### Sensitivity LED
 
@@ -70,12 +73,12 @@ Only an accepted drum-pad hit updates the LED. The LED receives the same final `
 Serial output categories can be enabled independently in the `AppConfig::Diagnostics` and `AppConfig::Controls` sections of `include/app_config.h`:
 
 - `AppConfig::Diagnostics::LOG_AUDIO_PEAKS` — streams ES8388 input peaks in Teleplot format as `rawPeak`,
-- `AppConfig::Diagnostics::LOG_TRIGGER_VALIDATION` — reports `triggerCandidate`, `triggerAccepted`, `validationMax`, `activeSamples`, and `windowEnergy` when a candidate starts or a validation finishes,
+- `AppConfig::Diagnostics::LOG_TRIGGER_VALIDATION` — reports `triggerCandidate`, `triggerAccepted`, `validationMax`, final mapped `velocity`, `activeSamples`, and `windowEnergy` when a candidate starts or a validation finishes,
 - `AppConfig::Controls::LOG_CONTROL_VALUES` — prints throttled filtered and mapped potentiometer values.
 
-Audio-peak and trigger-validation diagnostics are disabled by default. Validation details are event-driven rather than sent for every audio block, which limits their timing impact. Control logging is currently enabled and prints all five filtered ADC values plus normalized `CLICK` and `AMP_VEL` values. Fatal initialization errors are always printed.
+Audio-peak and trigger-validation diagnostics are disabled by default. Validation details are event-driven rather than sent for every audio block, which limits their timing impact. Control logging is currently enabled and prints all eight filtered ADC values plus the mapped control values, including `shape`, `decay_ms`, and the maximum `env_to_pitch` depth in semitones. Fatal initialization errors are always printed.
 
-For tuning, an isolated electrical spike should normally show `activeSamples:1` and `triggerAccepted:0`. A pad hit should retain all eight samples at or above the follow threshold and show `triggerAccepted:1`. Compare `validationMax` and `windowEnergy` for switch-on noise, switch-off noise, and light, medium, and strong hits before adjusting the thresholds. `windowEnergy` is diagnostic in this initial implementation; it is not part of the acceptance condition.
+For tuning, an isolated electrical spike should normally show `activeSamples:1` and `triggerAccepted:0`. A pad hit should retain all eight samples at or above the follow threshold and show `triggerAccepted:1`. Compare `rawPeak` with the resulting `velocity` for light, medium, and strong hits when calibrating `PAD_INPUT_MIN`, `PAD_INPUT_MAX`, and SENSITIVITY. `validationMax` and `windowEnergy` describe only the short acceptance window and do not determine hit strength after acceptance. `windowEnergy` is diagnostic; it is not part of the acceptance condition.
 
 ## Sound parameters
 
@@ -83,15 +86,16 @@ Envelope, amplitude, and pitch-envelope behavior are configured in the `AppConfi
 
 The final output stage is configured in `AppConfig::AudioOutput`. It applies a master gain of `0.5` (about -6 dB), then protects the codec input with a brickwall ceiling at `0.8` of full scale (about -1.9 dBFS). The limiter uses immediate block attack and a configurable release; it preserves the velocity dynamics instead of simply clipping the synthesized waveform.
 
-- `AMP_RELEASE_MS` — duration of the amplitude envelope and therefore the sound.
-- `PITCH_DECAY_MS` — time taken by the pitch envelope to fall to the base frequency.
+- `MIN_PULSE_WIDTH` — narrowest pulse produced at maximum SHAPE, set to `0.08`.
+- `ENVELOPE_SILENCE_THRESHOLD` — level reached by the shared exponential main envelope at the end of the selected DECAY duration.
 - `CLICK_DECAY_MS` — fixed exponential click duration, set to about 8 ms.
-- `CLICK_MAX_AMPLITUDE` — maximum click scale relative to the oscillator.
-- `AMP_VELOCITY_FULL_SCALE` — velocity above which the oscillator reaches the same full level as with AMP VEL at minimum; defaults to `0.9`.
+- `CLICK_MAX_AMPLITUDE` — maximum click scale relative to the oscillator, set to `0.65` for a clearly audible transient.
+- `AMP_VELOCITY_FULL_SCALE` — velocity at which full AMP VEL dynamics reach maximum oscillator level; defaults to `0.9`.
+- `AMP_VELOCITY_CONSTANT_GAIN` — oscillator gain at minimum AMP VEL, set to `0.55` so increasing the control can boost hard hits as well as attenuate soft hits.
 - `PITCH_DROP_VELOCITY_MIN_SCALE` — minimum share of the selected pitch drop applied to low-velocity hits.
 - `MAX_START_FREQUENCY_HZ` — upper limit for the initial pitch-envelope frequency.
 
-At each trigger, the A2 depth is mildly scaled from 65% to 100% by velocity. The pitch envelope's initial frequency is capped at 8 kHz, while A1 selects the base pitch across its full configured range.
+At each trigger, the existing A2 pitch-drop depth retains its 65–100% velocity scaling and is combined with A7 PITCH VEL. The A7 contribution ranges from zero for the weakest hit to the full selected depth for maximum velocity, making hit strength clearly affect the pitch sweep. Both pitch contributions use the same exponential envelope selected by A6. The pitch-envelope frequency is capped at 8 kHz, while A1 selects the base pitch across its full configured range. The exponential decay range and maximum A7 depth are configured in `AppConfig::Controls` as `DECAY_MIN_MS`, `DECAY_MAX_MS`, and `ENV_TO_PITCH_MAX_SEMITONES`.
 
 Input-related defaults are stored in the `AppConfig::AudioInput` and `AppConfig::HitDetection` sections of the same file:
 
@@ -119,7 +123,7 @@ To use the serial output, select the board serial port and use `115200` baud. Fo
 
 ## Audio signal-path tests
 
-The native integration test exercises the complete hardware-independent audio path: a simulated pad impulse enters through the `AudioIo` boundary, then the real hit detector, synth voice, and output limiter generate the captured mono output. It verifies rejection of a single-sample spike, acceptance of a light pad tail, validation across an input-block boundary, and lockout behavior. Three additional cases use weak, medium, and maximum pad peaks with sensitivity `0.5`, oscillator pitch `150 Hz`, pitch drop `1 octave`, click disabled, and full amplitude-velocity response. Focused voice tests also verify click silence, decay/retrigger behavior, both ends of the AMP VEL interpolation, and equal maximum levels with AMP VEL at minimum and maximum.
+The native integration test exercises the complete hardware-independent audio path: a simulated pad impulse enters through the `AudioIo` boundary, then the real hit detector, synth voice, and output limiter generate the captured mono output. It verifies rejection of a single-sample spike, acceptance of a light pad tail, validation across an input-block boundary, and lockout behavior. Weak, medium, and maximum scenarios derive their peaks from the configured `PAD_INPUT_MIN` and `PAD_INPUT_MAX`, so they remain representative after calibration changes. Rising-impulse regression cases keep the eight validation samples identical and place the actual peak later in the block; they verify that the final peak produces large differences in both AMP VEL output level and PITCH VEL frequency. Focused voice tests also verify click silence and transient level, decay/retrigger behavior, both ends of the AMP VEL interpolation, hard-hit gain at maximum AMP VEL, SHAPE endpoints and pulse width, velocity-sensitive A7 pitch modulation, and the A6 main-voice duration range.
 
 Run the tests from the project root:
 
@@ -127,4 +131,4 @@ Run the tests from the project root:
 pio test -e native
 ```
 
-Each executed scenario writes a self-contained SVG waveform plot to `test/artifacts/`. Filenames contain both the hit strength and simulated input peak, for example `audio_path_weak_pad_hit_peak_300.svg`. The plots include the input peak, synthesis parameters (including CLICK and AMP VEL), output peak, normalized amplitude, and time axis. The click decay test additionally writes `audio_path_click_envelope_level_1.svg`, a 12 ms close-up of the isolated click at maximum level. The mixed-signal test writes `audio_path_mixed_click_and_voice_pad_hit_peak_1560.svg`, a 20 ms close-up of the click mixed with the regular 150 Hz voice before output. The plots are regenerated and overwritten on every test run.
+Each executed scenario writes a self-contained SVG waveform plot to `test/artifacts/`. Audio-path filenames contain both the hit strength and configured simulated input peak. The plots include the input peak, synthesis parameters (including CLICK and AMP VEL), output peak, normalized amplitude, and time axis. The click decay test additionally writes `audio_path_click_envelope_level_1.svg`, a 12 ms close-up of the isolated click at maximum level. The mixed-signal test writes a 20 ms close-up of the click mixed with the regular 150 Hz voice before output. The sensitivity test writes `sensitivity_minimum.svg` and `sensitivity_maximum.svg`, plotting captured pad peak against mapped velocity at both ends of the SENSITIVITY control. All plots are regenerated and overwritten on every test run.

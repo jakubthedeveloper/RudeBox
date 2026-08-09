@@ -24,9 +24,36 @@ SynthControls controls = {
     AppConfig::Controls::DEFAULT_PITCH_DROP_OCTAVES,
     AppConfig::Controls::DEFAULT_CLICK_LEVEL,
     AppConfig::Controls::DEFAULT_AMP_VELOCITY,
+    AppConfig::Controls::DEFAULT_SHAPE,
+    AppConfig::Controls::DEFAULT_DECAY_MS,
+    AppConfig::Controls::DEFAULT_ENV_TO_PITCH_SEMITONES,
 };
 uint32_t lastScanMs = 0;
 uint32_t lastLogMs = 0;
+
+constexpr uint8_t CONTROL_CHANNELS[] = {
+    AppConfig::Controls::SENSITIVITY_CHANNEL,
+    AppConfig::Controls::OSC_PITCH_CHANNEL,
+    AppConfig::Controls::PITCH_DROP_CHANNEL,
+    AppConfig::Controls::CLICK_CHANNEL,
+    AppConfig::Controls::AMP_VELOCITY_CHANNEL,
+    AppConfig::Controls::SHAPE_CHANNEL,
+    AppConfig::Controls::DECAY_CHANNEL,
+    AppConfig::Controls::ENV_TO_PITCH_CHANNEL,
+};
+
+constexpr bool controlChannelsAreDistinct() {
+  for (size_t current = 0;
+       current < sizeof(CONTROL_CHANNELS) / sizeof(CONTROL_CHANNELS[0]);
+       ++current) {
+    for (size_t compared = current + 1;
+         compared < sizeof(CONTROL_CHANNELS) / sizeof(CONTROL_CHANNELS[0]);
+         ++compared) {
+      if (CONTROL_CHANNELS[current] == CONTROL_CHANNELS[compared]) return false;
+    }
+  }
+  return true;
+}
 
 static_assert(AppConfig::Controls::POTENTIOMETER_COUNT > 0,
               "At least one potentiometer must be configured");
@@ -39,30 +66,16 @@ static_assert(AppConfig::Controls::SENSITIVITY_CHANNEL <
                   AppConfig::Controls::CLICK_CHANNEL <
                       AppConfig::Controls::POTENTIOMETER_COUNT &&
                   AppConfig::Controls::AMP_VELOCITY_CHANNEL <
+                      AppConfig::Controls::POTENTIOMETER_COUNT &&
+                  AppConfig::Controls::SHAPE_CHANNEL <
+                      AppConfig::Controls::POTENTIOMETER_COUNT &&
+                  AppConfig::Controls::DECAY_CHANNEL <
+                      AppConfig::Controls::POTENTIOMETER_COUNT &&
+                  AppConfig::Controls::ENV_TO_PITCH_CHANNEL <
                       AppConfig::Controls::POTENTIOMETER_COUNT,
               "Each control channel must be scanned");
-static_assert(
-    AppConfig::Controls::SENSITIVITY_CHANNEL !=
-            AppConfig::Controls::OSC_PITCH_CHANNEL &&
-        AppConfig::Controls::SENSITIVITY_CHANNEL !=
-            AppConfig::Controls::PITCH_DROP_CHANNEL &&
-        AppConfig::Controls::SENSITIVITY_CHANNEL !=
-            AppConfig::Controls::CLICK_CHANNEL &&
-        AppConfig::Controls::SENSITIVITY_CHANNEL !=
-            AppConfig::Controls::AMP_VELOCITY_CHANNEL &&
-        AppConfig::Controls::OSC_PITCH_CHANNEL !=
-            AppConfig::Controls::PITCH_DROP_CHANNEL &&
-        AppConfig::Controls::OSC_PITCH_CHANNEL !=
-            AppConfig::Controls::CLICK_CHANNEL &&
-        AppConfig::Controls::OSC_PITCH_CHANNEL !=
-            AppConfig::Controls::AMP_VELOCITY_CHANNEL &&
-        AppConfig::Controls::PITCH_DROP_CHANNEL !=
-            AppConfig::Controls::CLICK_CHANNEL &&
-        AppConfig::Controls::PITCH_DROP_CHANNEL !=
-            AppConfig::Controls::AMP_VELOCITY_CHANNEL &&
-        AppConfig::Controls::CLICK_CHANNEL !=
-            AppConfig::Controls::AMP_VELOCITY_CHANNEL,
-    "Each control needs a distinct ADS7830 channel");
+static_assert(controlChannelsAreDistinct(),
+              "Each control needs a distinct ADS7830 channel");
 static_assert(AppConfig::Controls::POT_FILTER_ALPHA > 0.0f &&
                   AppConfig::Controls::POT_FILTER_ALPHA <= 1.0f,
               "The potentiometer EMA alpha must be in (0, 1]");
@@ -75,6 +88,7 @@ void applyMappedValue(uint8_t channel, float filteredValue,
 float normalizedKnob(float filteredValue);
 float mapOscPitch(float knob);
 float mapPitchDrop(float knob);
+float mapDecay(float knob);
 
 }  // namespace
 
@@ -120,7 +134,8 @@ void logControlValues(uint32_t now) {
   Serial.printf(
       "pots filtered=[%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f]\n"
       "sensitivity=%.3f oscPitchHz=%.2f pitchDropOct=%.3f\n"
-      "CLICK=%.3f AMP_VEL=%.3f\n",
+      "CLICK=%.3f AMP_VEL=%.3f shape=%.3f decay_ms=%.1f "
+      "env_to_pitch=%.1f\n",
       potentiometers[0].filtered,
       potentiometers[1].filtered,
       potentiometers[2].filtered,
@@ -130,7 +145,8 @@ void logControlValues(uint32_t now) {
       potentiometers[6].filtered,
       potentiometers[7].filtered,
       controls.sensitivity, controls.oscPitchHz, controls.pitchDropOctaves,
-      controls.clickLevel, controls.ampVelocity);
+      controls.clickLevel, controls.ampVelocity, controls.shapeNormalized,
+      controls.decayMs, controls.envToPitchSemitones);
 }
 
 void updatePotentiometer(uint8_t channel, SynthControls& nextControls) {
@@ -177,6 +193,17 @@ void applyMappedValue(uint8_t channel, float filteredValue,
     case AppConfig::Controls::AMP_VELOCITY_CHANNEL:
       nextControls.ampVelocity = normalizedKnob(filteredValue);
       break;
+    case AppConfig::Controls::SHAPE_CHANNEL:
+      nextControls.shapeNormalized = normalizedKnob(filteredValue);
+      break;
+    case AppConfig::Controls::DECAY_CHANNEL:
+      nextControls.decayMs = mapDecay(normalizedKnob(filteredValue));
+      break;
+    case AppConfig::Controls::ENV_TO_PITCH_CHANNEL:
+      nextControls.envToPitchSemitones =
+          normalizedKnob(filteredValue) *
+          AppConfig::Controls::ENV_TO_PITCH_MAX_SEMITONES;
+      break;
   }
 }
 
@@ -195,6 +222,13 @@ float mapPitchDrop(float knob) {
   const float shaped = knob * knob;
   return MathUtils::lerp(AppConfig::Controls::PITCH_DROP_MIN_OCTAVES,
                          AppConfig::Controls::PITCH_DROP_MAX_OCTAVES, shaped);
+}
+
+float mapDecay(float knob) {
+  return AppConfig::Controls::DECAY_MIN_MS *
+         powf(AppConfig::Controls::DECAY_MAX_MS /
+                  AppConfig::Controls::DECAY_MIN_MS,
+              knob);
 }
 
 }  // namespace

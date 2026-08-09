@@ -19,4 +19,7 @@ struct Result {
 Result process(const uint16_t* magnitudes, size_t sampleCount,
                float sensitivity);
 
+// Maps a captured pad peak to normalized velocity for the selected sensitivity.
+float mapVelocity(uint16_t peak, float sensitivity);
+
 }  // namespace HitDetector

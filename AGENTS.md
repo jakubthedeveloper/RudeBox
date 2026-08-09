@@ -8,4 +8,5 @@
 - Encapsulate user-interface and hardware interaction behind dedicated abstractions. Application-level code should coordinate these components without knowing how controls are read, outputs are driven, or diagnostics are produced.
 - Preserve these boundaries when adding or changing features. Extend the appropriate layer instead of introducing shortcuts that leak lower-level details into higher-level code.
 - After every change, review `README.md` and update it whenever the behavior, configuration, architecture, setup, or usage has changed.
+- Keep Markdown paragraphs and list items on a single source line. Do not insert hard line breaks in the middle of sentences or wrap prose to a fixed column width.
 - Write all source code, identifiers, comments, and documentation in English.

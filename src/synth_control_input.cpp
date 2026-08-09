@@ -118,7 +118,7 @@ void logControlValues(uint32_t now) {
 
   lastLogMs = now;
   Serial.printf(
-      "pots filtered=[%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f]\n"
+      "pots filtered=[%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f]\n"
       "sensitivity=%.3f oscPitchHz=%.2f pitchDropOct=%.3f\n"
       "CLICK=%.3f AMP_VEL=%.3f\n",
       potentiometers[0].filtered,
@@ -128,6 +128,7 @@ void logControlValues(uint32_t now) {
       potentiometers[4].filtered,
       potentiometers[5].filtered,
       potentiometers[6].filtered,
+      potentiometers[7].filtered,
       controls.sensitivity, controls.oscPitchHz, controls.pitchDropOctaves,
       controls.clickLevel, controls.ampVelocity);
 }

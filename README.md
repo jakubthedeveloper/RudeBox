@@ -2,9 +2,14 @@
 
 *Single Voice Drum Synthesizer*
 
+> [!TIP]
+> **[Read the illustrated RudeBox build guide →](https://jakubthedeveloper.github.io/RudeBox/)**
+>
+> Build your own RudeBox step by step: components, wiring diagrams, firmware, debugging lessons, and a video demonstration.
+
 ## Illustrated build guide
 
-The beginner-friendly [build article](docs/index.html) covers component selection, wiring, firmware, debugging lessons from the commit history, and enclosure assembly. It includes the project photograph, the YouTube demonstration, downloadable SVG connection diagrams, and an interactive sensitivity curve. The article documents firmware snapshot `881fcd1` and explicitly identifies hardware details that the repository does not specify.
+The beginner-friendly [build article](https://jakubthedeveloper.github.io/RudeBox/) covers component selection, wiring, firmware, debugging lessons from the commit history, and enclosure assembly. It includes the project photograph, the YouTube demonstration, downloadable SVG connection diagrams, and an interactive sensitivity curve. The article documents firmware snapshot `881fcd1` and explicitly identifies hardware details that the repository does not specify.
 
 The article's top navigation stays visible while scrolling on desktop and mobile, keeping the repository link within reach.
 

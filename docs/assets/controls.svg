@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 650" role="img" aria-labelledby="title desc"><title id="title">Potentiometer, ADC bus, and sensitivity LED wiring</title><desc id="desc">Each 10 kilohm potentiometer connects between 3.3 volts and ground. The wiper feeds an ADS7830 channel through 680 ohms. A 100 nanofarad capacitor connects the ADC side of that resistor to ground. ADC power and REF connect to 3.3 volts; GND to common ground; SDA to GPIO23 and SCL to GPIO18. GPIO22 connects through a 680 ohm resistor to the anode and the cathode connects to ground.</desc><style>text{font-family:Arial,sans-serif;fill:#242820;font-size:18px}.title{font-size:25px;font-weight:700}.small{font-size:15px;fill:#626657}.mono{font-family:monospace;font-size:16px}.wire{fill:none;stroke:#425c46;stroke-width:3;stroke-linejoin:round}.power{fill:none;stroke:#cf542e;stroke-width:3}.data{fill:none;stroke:#316b8b;stroke-width:3}.part{fill:#faf8f1;stroke:#425c46;stroke-width:2.5}.box{fill:#eae9dd;stroke:#d7d8c8;stroke-width:2}.dot{fill:#425c46}</style><rect width="1000" height="650" fill="#faf8f1"/>
+<text x="35" y="43" class="title">03 / One control, repeated eight times</text><text x="35" y="72" class="small">ADC-side capacitor · Shared 3.3 V and GND rails · No 5 V on the control wiring</text>
+<path d="M75 130H865M215 130V190M215 285V375M75 375H620" class="power"/>
+<text x="75" y="116" class="mono">3.3 V</text><text x="75" y="410" class="mono">GND</text>
+<path d="M215 285V375M75 375H620" class="wire"/>
+<rect x="202" y="190" width="26" height="95" class="part"/><text x="80" y="230">10 kΩ</text><text x="80" y="254" class="small">potentiometer</text>
+<path d="M240 238H365M445 238H690" class="wire"/><path d="M240 238L257 229V247Z" fill="#425c46"/>
+<text x="267" y="220" class="small">Wiper</text><rect x="365" y="225" width="80" height="26" class="part"/><text x="371" y="210">680 Ω</text>
+<path d="M545 238V294M522 294H568M522 309H568M545 309V375" class="wire"/><circle cx="545" cy="238" r="5" class="dot"/><circle cx="545" cy="375" r="5" class="dot"/><text x="574" y="308">100 nF</text>
+<rect x="690" y="190" width="270" height="230" rx="7" class="box"/><text x="715" y="224" class="title">ADS7830</text><text x="715" y="251" class="small">CHx = A0 … A7</text>
+<path d="M795 130V190M865 130V190" class="power"/><text x="764" y="177" class="small">VIN</text><text x="853" y="177" class="small">REF</text>
+<text x="715" y="293" class="mono">SDA ← GPIO23</text><text x="715" y="322" class="mono">SCL ← GPIO18</text><text x="715" y="355" class="small">Address: 0x48</text><text x="715" y="383" class="small">GND → shared ground</text>
+<text x="75" y="456" class="small">Tested breakout: Ext Ref + Ext Com closed; external COM pin unconnected.</text>
+<path d="M35 486H965" stroke="#d7d8c8"/>
+<text x="35" y="524">Sensitivity indicator</text><text x="35" y="563" class="mono">GPIO22</text><path d="M130 557H225M305 557H440M480 557H645" class="power"/>
+<rect x="225" y="544" width="80" height="26" class="part"/><text x="207" y="600" class="small">680 Ω</text>
+<path d="M440 542V572L468 557Z" fill="#cf542e" stroke="#cf542e" stroke-width="2"/><path d="M473 540V574M468 557H480M450 530L467 513M460 537L477 520" class="power"/>
+<text x="391" y="601" class="small">Anode (+)</text><text x="495" y="601" class="small">Cathode (−)</text><text x="662" y="563" class="mono">GND</text>
+</svg>

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 610" role="img" aria-labelledby="title desc"><title id="title">RudeBox connection map</title><desc id="desc">An external pad enters the protection circuit and right codec line input. The ES8388 exchanges audio with the ESP32 over I2S and sends mono to the left output. Eight controls connect through the ADS7830 on GPIO23 and GPIO18. GPIO22 drives the sensitivity LED.</desc><style>text{font-family:Arial,sans-serif;fill:#242820;font-size:18px}.title{font-size:25px;font-weight:700}.small{font-size:15px;fill:#626657}.mono{font-family:monospace;font-size:16px}.wire{fill:none;stroke:#425c46;stroke-width:3;stroke-linejoin:round}.power{fill:none;stroke:#cf542e;stroke-width:3}.data{fill:none;stroke:#316b8b;stroke-width:3}.part{fill:#faf8f1;stroke:#425c46;stroke-width:2.5}.box{fill:#eae9dd;stroke:#d7d8c8;stroke-width:2}.dot{fill:#425c46}</style><rect width="1000" height="610" fill="#faf8f1"/>
+<text x="35" y="43" class="title">01 / The complete instrument</text>
+<text x="35" y="72" class="small">Solid green: analog audio · Blue: digital buses · Orange: indication</text>
+<rect x="35" y="135" width="180" height="90" rx="7" class="box"/><text x="58" y="173">Drum pad</text><text x="58" y="201" class="small">TIP + SLEEVE</text>
+<path d="M215 180H285" class="wire"/><text x="229" y="164" class="small">→</text>
+<rect x="285" y="135" width="180" height="90" rx="7" class="box"/><text x="308" y="173">Input protection</text><text x="308" y="201" class="small">See diagram 02</text>
+<path d="M465 180H535" class="wire"/><text x="483" y="164" class="small">→</text>
+<rect x="510" y="100" width="455" height="325" rx="12" fill="none" stroke="#b1b6a5" stroke-dasharray="6 5"/><text x="535" y="126" class="small">ESP32 Audio Kit V2.2 / ESP32-A1S</text>
+<rect x="535" y="148" width="180" height="80" rx="7" class="box"/><text x="555" y="181">ES8388 codec</text><text x="555" y="208" class="small">Right LINE IN</text>
+<path d="M715 188H775" class="data"/><text x="729" y="176" class="small">↔</text>
+<rect x="775" y="148" width="165" height="80" rx="7" class="box"/><text x="801" y="181">ESP32</text><text x="795" y="208" class="small">Synth firmware</text>
+<text x="535" y="270" class="mono">I2S: 0 / 27 / 25 / 26 / 35</text><text x="535" y="296" class="small">MCLK / BCLK / LRCK / ESP TX / ESP RX</text><text x="535" y="331" class="mono">Codec I2C: SDA 33 / SCL 32</text><text x="535" y="356" class="small">0x10 · Already wired on the audio board</text>
+<path d="M620 228V246H495V393H465" class="wire"/>
+<rect x="285" y="355" width="180" height="80" rx="7" class="box"/><text x="308" y="390">Analog VOLUME</text><text x="308" y="416" class="small">Left audio output</text>
+<path d="M285 393H215" class="wire"/><text x="240" y="376" class="small">←</text>
+<rect x="35" y="355" width="180" height="80" rx="7" class="box"/><text x="55" y="390">Powered monitor</text><text x="55" y="416" class="small">or audio interface</text>
+<rect x="35" y="490" width="180" height="80" rx="7" class="box"/><text x="55" y="523">8 × 10 kΩ pots</text><text x="55" y="550" class="small">See diagram 03</text>
+<path d="M215 530H285" class="wire"/>
+<rect x="285" y="490" width="180" height="80" rx="7" class="box"/><text x="308" y="523">ADS7830</text><text x="308" y="550" class="small">A0–A7 · 0x48</text>
+<path d="M465 530H850V425" class="data"/><text x="500" y="513" class="mono">SDA 23 / SCL 18</text>
+<path d="M930 425V470" class="power"/><circle cx="930" cy="488" r="13" fill="#cf542e"/><text x="730" y="464" class="small">GPIO22 → resistor → LED</text>
+<text x="535" y="395" class="small">Shared GND · Controls powered from 3.3 V</text>
+</svg>

@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 520" role="img" aria-labelledby="title desc"><title id="title">Protected pad input</title><desc id="desc">Pad tip connects through 100 kilohms to SIGNAL. SIGNAL connects through 10 kilohms to ground, through 1 nanofarad to ground, and through two oppositely oriented Schottky diodes to ground. A 100 nanofarad series capacitor connects SIGNAL to right LINE IN. Pad sleeve connects to ground.</desc><style>text{font-family:Arial,sans-serif;fill:#242820;font-size:18px}.title{font-size:25px;font-weight:700}.small{font-size:15px;fill:#626657}.mono{font-family:monospace;font-size:16px}.wire{fill:none;stroke:#425c46;stroke-width:3;stroke-linejoin:round}.power{fill:none;stroke:#cf542e;stroke-width:3}.data{fill:none;stroke:#316b8b;stroke-width:3}.part{fill:#faf8f1;stroke:#425c46;stroke-width:2.5}.box{fill:#eae9dd;stroke:#d7d8c8;stroke-width:2}.dot{fill:#425c46}</style><rect width="1000" height="520" fill="#faf8f1"/>
+<text x="35" y="43" class="title">02 / Protect and condition the pad signal</text>
+<text x="35" y="72" class="small">Electrical connectivity, not physical component placement</text>
+<text x="40" y="132" class="mono">PAD TIP</text><circle cx="65" cy="175" r="5" class="dot"/>
+<path d="M65 175H165M245 175H830M846 175H946" class="wire"/>
+<rect x="165" y="162" width="80" height="26" class="part"/><text x="173" y="145">100 kΩ</text>
+<text x="313" y="132" class="mono">SIGNAL</text>
+<path d="M330 175V250M330 315V400M460 175V270M460 286V400M590 175V265M590 308V400M720 175V265M720 308V400M65 400H770" class="wire"/>
+<rect x="317" y="250" width="26" height="65" class="part"/><text x="249" y="292">10 kΩ</text>
+<path d="M435 270H485M435 286H485M830 150V200M846 150V200" class="wire"/><text x="410" y="324">1 nF</text><text x="801" y="133">100 nF</text>
+<path d="M575 265H605L590 293Z" class="part"/><path d="M575 298V293H605V288M590 293V308" class="wire"/>
+<path d="M705 308H735L720 280Z" class="part"/><path d="M705 285V280H735V275M720 280V265" class="wire"/>
+<text x="544" y="344" class="small">D1</text><text x="735" y="344" class="small">D2</text><text x="526" y="470" class="small">Schottky pair, opposite directions</text>
+<text x="867" y="218" class="mono">RIGHT</text><text x="867" y="242" class="mono">LINE IN</text>
+<text x="35" y="445" class="mono">PAD SLEEVE → GND</text><text x="474" y="445" class="small">D1 cathode to GND · D2 cathode to SIGNAL</text>
+<path d="M770 400V415M752 415H788M758 423H782M764 431H776" class="wire"/>
+<circle cx="330" cy="175" r="5" class="dot"/><circle cx="460" cy="175" r="5" class="dot"/><circle cx="590" cy="175" r="5" class="dot"/><circle cx="720" cy="175" r="5" class="dot"/>
+<circle cx="330" cy="400" r="5" class="dot"/><circle cx="460" cy="400" r="5" class="dot"/><circle cx="590" cy="400" r="5" class="dot"/><circle cx="720" cy="400" r="5" class="dot"/><circle cx="65" cy="400" r="5" class="dot"/>
+<text x="35" y="490" class="small">The capacitor is in series with LINE IN. Every lower branch joins the same ground.</text>
+</svg>

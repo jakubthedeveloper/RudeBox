@@ -2,6 +2,20 @@
 
 *Single Voice Drum Synthesizer*
 
+## Illustrated build guide
+
+The beginner-friendly [build article](docs/index.html) covers component selection, wiring, firmware, debugging lessons from the commit history, and enclosure assembly. It includes the project photograph, the YouTube demonstration, downloadable SVG connection diagrams, and an interactive sensitivity curve. The article documents firmware snapshot `881fcd1` and explicitly identifies hardware details that the repository does not specify.
+
+The article's top navigation stays visible while scrolling on desktop and mobile, keeping the repository link within reach.
+
+To preview the site, run `python3 -m http.server 8000 --directory docs` from the repository root and open `http://localhost:8000`. The article and diagrams also work by opening `docs/index.html` directly; embedded video needs an internet connection.
+
+To publish, commit and push `docs/`, then select **Settings → Pages → Deploy from a branch**, choose the publishing branch and **/docs**, and save. See [GitHub's publishing-source instructions](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site). No site build or package installation is required. The `docs/.nojekyll` file keeps publication static, and all site assets use relative paths. When publishing under a different account or repository, update the absolute Open Graph image URL in `docs/index.html`.
+
+Edit the article in `docs/index.html`, its appearance in `docs/assets/style.css`, and its optional interactions in `docs/assets/article.js`. The SVG diagrams live in `docs/assets/`; the device photograph is copied from `images/RudeBox.png` so the Pages folder is self-contained. If firmware wiring or ranges change, review the article, diagrams, and the JavaScript velocity mapping together. The print stylesheet supports saving a reading copy as PDF.
+
+## Instrument overview
+
 RudeBox is an electronic drum synthesizer played with an external electronic drum pad. Each strike generates a single synthesized percussion voice that can be shaped with eight synthesis controls and an analog volume control. Its sound range covers toms, laser-like sweeps, noise, bass, kicks, and beeps.
 
 ![RudeBox drum synthesizer](images/RudeBox.png)
@@ -16,7 +30,7 @@ RudeBox is built around an ESP32 Audio Kit V2.2 with an ESP32-A1S module and ES8
 
 ### Controls
 
-Eight 10 kΩ potentiometers shape the response and sound:
+Eight 10 kΩ linear-taper potentiometers shape the response and sound:
 
 | Channel | Control | Effect |
 | --- | --- | --- |
@@ -105,7 +119,7 @@ POT wiper ----[680R]----+------> ADS7830 CHx
 
 ### Sensitivity LED
 
-The sensitivity LED is connected from GPIO22 through a resistor to its anode, with its cathode connected to GND. It is driven by active-high 5 kHz, 8-bit PWM.
+The sensitivity LED is connected from GPIO22 through a 680 Ω resistor to its anode, with its cathode connected to GND. It is driven by active-high 5 kHz, 8-bit PWM.
 
 Only accepted pad strikes light the LED. Its brightness represents the same velocity used by the synth, with a response that keeps soft hits visible, and fades to off in about 150 ms. A new strike replaces the current level.
 

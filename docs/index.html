@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4f0e6">
+  <meta name="description" content="Build RudeBox, a playable ESP32 drum synthesizer. A beginner-friendly guide to components, wiring, firmware, and the real debugging lessons in its commit history.">
+  <meta property="og:title" content="RudeBox — Build a box. Make some noise.">
+  <meta property="og:description" content="From a drum-pad impulse to a homemade instrument: wiring diagrams, firmware, and lessons from the workbench.">
+  <meta property="og:type" content="article">
+  <meta property="og:image" content="https://jakubthedeveloper.github.io/RudeBox/assets/rudebox.png">
+  <title>Build a box. Make some noise. — The RudeBox build guide</title>
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/style.css">
+  <script src="assets/article.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#article">Skip to the article</a>
+<header class="topbar">
+  <a class="brand" href="#top">RUDE<span>BOX</span> /</a>
+  <nav class="toplinks" aria-label="Quick links"><a href="#demo">Hear it</a><a href="https://github.com/jakubthedeveloper/RudeBox">Get the code ↗</a></nav>
+</header>
+<div class="wrap" id="top">
+  <div class="hero">
+    <div class="eyebrow">A homemade instrument / A practical build guide</div>
+    <h1>Build a box.<br>Make some <em>noise.</em></h1>
+    <div class="hero-bottom"><p class="dek">A drum pad, an ESP32, and a handful of knobs. How RudeBox turns a small electrical impulse into a surprisingly expressive percussion instrument.</p><div class="read-meta">Electronics → Code → Sound<br>Based on the actual repository<br>Firmware snapshot: 881fcd1</div></div>
+    <figure class="hero-photo"><img src="assets/rudebox.png" width="1451" height="1084" alt="The finished black RudeBox with colorful knobs and hand-lettered yellow labels, beside a drum pad and wooden drumstick."><figcaption><span>THE FINISHED BUILD / Eight synthesis controls, one analog volume knob.</span><span>Photograph from the RudeBox repository</span></figcaption></figure>
+    <div class="specs" aria-label="Project at a glance"><div><strong>1 voice</strong><span>Monophonic percussion</span></div><div><strong>8 + 1 knobs</strong><span>Sound controls + volume</span></div><div><strong>44.1 kHz</strong><span>16-bit audio stream</span></div><div><strong>ESP32 + ES8388</strong><span>Processor + audio codec</span></div></div>
+  </div>
+  <div class="article-layout">
+    <nav class="toc" aria-label="Article contents">
+      <p class="label">On the workbench</p>
+      <a href="#idea"><span>01</span>What we are building</a>
+      <a href="#demo"><span>02</span>Hear the instrument</a>
+      <a href="#parts"><span>03</span>Choose the components</a>
+      <a href="#wiring"><span>04</span>Connect the hardware</a>
+      <a href="#firmware"><span>05</span>Bring it to life</a>
+      <a href="#sound"><span>06</span>Inside the sound</a>
+      <a href="#debugging"><span>07</span>Lessons from debugging</a>
+      <a href="#enclosure"><span>08</span>Finish the instrument</a>
+      <a href="#sources"><span>09</span>Sources &amp; history</a>
+      <div class="source-note">A build explained from its code, documentation, photographs, and commits of August 2026.</div>
+    </nav>
+    <main id="article"><article>
+      <section id="idea">
+        <div class="section-number">01 / The idea</div>
+        <h2>A strike goes in.<br>A new sound comes out.</h2>
+        <p class="lead">RudeBox is a small drum synthesizer you play with an external electronic drum pad. Strike the pad and it produces a sound. Turn a knob and the next strike can become a low thump, a ringing tom, or a descending laser-like sweep.</p>
+        <p>The pad supplies the trigger and the strength of the hit. The firmware creates the sound mathematically: it does not play a recording of a drum. There is one voice, so an accepted new strike restarts the sound already playing.</p>
+        <p>Three jobs make the instrument work. The input circuit tames the pad signal. The ESP32 decides whether that signal looks like a real strike and calculates the sound. An audio codec translates between electrical audio and the numbers the processor can use.</p>
+        <figure class="diagram"><img src="assets/system.svg" width="1000" height="610" alt="System map: pad through input protection to the right ES8388 input; ESP32 synthesizes audio, which leaves the left codec output through analog volume. Eight knobs feed an ADS7830 on a separate I2C bus." loading="lazy"><figcaption>FIG. 01 / Follow the signal from pad to speaker. The dashed box is the existing audio board.<a href="assets/system.svg">Open full-size SVG ↗</a></figcaption></figure>
+        <p>You will need basic soldering skills, a multimeter, a computer, and patience for testing one connection at a time. The sequence below is a suggested build order reconstructed from the project. The commit history documents the firmware’s evolution; it is not a complete manufacturing record.</p>
+        <aside class="note"><p><strong>What is documented, and what needs a decision?</strong> The repository specifies the board, eight control pots, input network, ADC wiring, and LED pin. It does not give an exact pad model, diode part number, enclosure dimensions, or a complete analog VOLUME schematic. Those gaps are called out where they matter.</p></aside>
+      </section>
+      <section id="demo">
+        <div class="section-number">02 / Listen first</div>
+        <h2>The instrument in action.</h2>
+        <p>Use this demonstration as the reference for the finished project. Listen for the attack at the start of each note, how the pitch falls, and how long the sound takes to fade. Those are the ingredients you will be wiring to the front panel.</p>
+        <div class="video"><iframe src="https://www.youtube-nocookie.com/embed/bKgVX5p5UgE" title="RudeBox drum synthesizer demonstration" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></div>
+        <p class="small"><a href="https://youtu.be/bKgVX5p5UgE">Watch the RudeBox demo on YouTube ↗</a> if the embedded player is unavailable. Playback requires an internet connection.</p>
+      </section>
+      <section id="parts">
+        <div class="section-number">03 / Choose the components</div>
+        <h2>Start with the audio board.</h2>
+        <p>The documented build uses an <strong>ESP32 Audio Kit V2.2 with an ESP32-A1S module and an ES8388 codec</strong>. Using an audio board gives you the processor and audio conversion on one assembly. A generic ESP32 development board alone does not provide the same audio connections.</p>
+        <p>Check the actual codec fitted to your board before ordering or soldering. The driver in this repository configures ES8388 registers directly. A board sold under a similar name with a different codec would require a different driver and possibly different pin assignments.</p>
+        <div class="table-scroll"><table><caption class="label">Parts documented in the repository</caption><thead><tr><th>Part</th><th>Quantity / value</th><th>What it does</th></tr></thead><tbody>
+          <tr><td>ESP32 Audio Kit</td><td>1 × V2.2, ESP32-A1S / ES8388</td><td>Runs the synth and converts audio.</td></tr>
+          <tr><td>ADS7830 breakout</td><td>1 × STEMMA QT board, address 0x48</td><td>Reads eight analog knob positions.</td></tr>
+          <tr><td>Control potentiometers</td><td>8 × 10 kΩ, linear taper</td><td>Set sensitivity and sound parameters.</td></tr>
+          <tr><td>Control filters</td><td>8 × 680 Ω; 8 × 100 nF</td><td>One resistor and capacitor per wiper.</td></tr>
+          <tr><td>Pad input resistors</td><td>1 × 100 kΩ; 1 × 10 kΩ</td><td>Attenuate the incoming pad signal.</td></tr>
+          <tr><td>Pad input capacitors</td><td>1 × 1 nF; 1 × 100 nF</td><td>Filter the signal and AC-couple the input.</td></tr>
+          <tr><td>Schottky diodes</td><td>2; exact type unspecified</td><td>Clamp both signal polarities.</td></tr>
+          <tr><td>Sensitivity indicator</td><td>1 LED + 680 Ω series resistor</td><td>Shows the accepted strike’s strength.</td></tr>
+          <tr><td>External drum pad</td><td>1; exact model unspecified</td><td>Supplies the strike impulse.</td></tr>
+          <tr><td>Analog VOLUME</td><td>1 potentiometer; value unspecified</td><td>Controls output level outside the firmware.</td></tr>
+        </tbody></table></div>
+        <p>You will also need hookup wire, suitable audio connectors, a small solderable prototyping board, insulation, mounting hardware, an enclosure, a USB data cable, and a powered audio monitor or interface. Choose connector sizes and enclosure spacing to match the actual parts in your hands; the repository contains no drilling template.</p>
+        <h3>Why add a separate ADC?</h3>
+        <p>An analog-to-digital converter, or <strong>ADC</strong>, turns a voltage into a number. Here the ADS7830 turns each knob position into an 8-bit value from 0 to 255. The firmware reads all eight controls through two I2C signal wires. This keeps control reading separate from the codec’s audio conversion and from the processor’s audio pins.</p>
+        <p>The eight control potentiometers are 10 kΩ with a linear taper. The firmware applies its own curved mappings for pitch and decay.</p>
+      </section>
+      <section id="wiring">
+        <div class="section-number">04 / Wire one subsystem at a time</div>
+        <h2>Give every wire a job.</h2>
+        <p>Assemble and check the low-voltage wiring with the board unpowered. Ground, marked <strong>GND</strong>, is the shared voltage reference: the pad sleeve, input network, ADC, pots, LED, and audio board must agree on it. Use the audio board’s intended power input and its 3.3 V rail for the controls; the repository does not document a separate battery supply.</p>
+        <h3>1. Protect the pad input</h3>
+        <p>The pad enters through its signal contact, called the <strong>tip</strong>, and its ground contact, the <strong>sleeve</strong>. It must go through the protection network before reaching the board’s <strong>right LINE IN</strong>. This is an audio input on the codec, not an ESP32 GPIO pin.</p>
+        <figure class="diagram"><img src="assets/pad-input.svg" width="1000" height="520" alt="Pad tip through 100 kΩ to SIGNAL, with 10 kΩ, 1 nF, and antiparallel Schottky diodes from SIGNAL to ground; 100 nF in series from SIGNAL to right LINE IN. Pad sleeve to ground." loading="lazy"><figcaption>FIG. 02 / Reproduces the input network in README.md. Dots mark joined wires.<a href="assets/pad-input.svg">Open full-size SVG ↗</a></figcaption></figure>
+        <p>The 100 kΩ and 10 kΩ resistors form a voltage divider. Ignoring the rest of the circuit, it reduces the pad voltage to about one eleventh: <code>10 / (100 + 10)</code>. The 1 nF capacitor shunts fast changes toward ground. Two Schottky diodes face opposite ways so they limit positive and negative excursions. The series 100 nF capacitor couples changes in the signal to LINE IN while blocking a steady DC level.</p>
+        <p>The stripe on a diode identifies its cathode; D1’s cathode goes to ground and D2’s to SIGNAL. Select actual diodes to suit the pad and input rather than assuming an undocumented part number. The network is the project’s documented approach, not a measured guarantee for every pad.</p>
+        <p><strong>Check the destination contact.</strong> “Pad tip” does not necessarily mean “tip of the board’s stereo input.” Use your board’s pinout or a continuity check to identify the right input connection. On a conventional stereo TRS line jack, right is the ring; verify the actual jack and cable before soldering.</p>
+        <h3>2. Connect the ADC and eight controls</h3>
+        <p>A potentiometer has two ends and a moving middle contact, the <strong>wiper</strong>. Connect the ends between GND and 3.3 V. Connect the wiper through 680 Ω to its ADS7830 channel, then put 100 nF between that channel and GND. The capacitor belongs on the ADC side of the resistor. If rotation works backwards, swap the two end connections.</p>
+        <figure class="diagram"><img src="assets/controls.svg" width="1000" height="650" alt="One 10 kΩ control between 3.3 V and ground, wiper through 680 Ω to ADC, 100 nF from ADC input to ground. ADS7830 SDA is GPIO23 and SCL GPIO18. LED anode connects through a 680 Ω resistor to GPIO22 and cathode to ground." loading="lazy"><figcaption>FIG. 03 / Repeat the upper control circuit for A0–A7. The LED is a separate circuit.<a href="assets/controls.svg">Open full-size SVG ↗</a></figcaption></figure>
+        <div class="table-scroll"><table><thead><tr><th>ADC connection</th><th>Connect to</th></tr></thead><tbody><tr><td>VIN / power</td><td>Audio board 3.3 V</td></tr><tr><td>GND</td><td>Common GND</td></tr><tr><td>SDA</td><td>GPIO23</td></tr><tr><td>SCL</td><td>GPIO18</td></tr><tr><td>REF</td><td>3.3 V</td></tr><tr><td>External COM pin</td><td>Leave unconnected on the documented breakout</td></tr><tr><td>Ext Ref / Ext Com</td><td>Both solder jumpers closed on the tested board</td></tr></tbody></table></div>
+        <p>The COM instruction is specific to the tested breakout with its jumper closed; it does not mean the chip can work without a reference ground. Inspect your breakout’s jumper arrangement. The <a href="https://learn.adafruit.com/adafruit-ads7830-8-channel-8-bit-adc?view=all">Adafruit board guide</a> explains the reference and address jumpers; the repository records the wiring used here.</p>
+        <div class="table-scroll"><table><thead><tr><th>Channel</th><th>Panel label</th><th>What you hear or see</th></tr></thead><tbody>
+          <tr><td>A0</td><td>SENSITIVITY</td><td>Changes the velocity assigned to an accepted hit.</td></tr>
+          <tr><td>A1</td><td>PITCH</td><td>Base frequency: 45–1200 Hz.</td></tr>
+          <tr><td>A2</td><td>PITCH DROP</td><td>Initial upward offset, then downward sweep: up to 4.5 octaves, reduced for softer hits.</td></tr>
+          <tr><td>A3</td><td>CLICK</td><td>Level of an 8 ms noise burst at the start.</td></tr>
+          <tr><td>A4</td><td>AMP VEL</td><td>From nearly constant oscillator level to strike-dependent loudness.</td></tr>
+          <tr><td>A5</td><td>SHAPE</td><td>Triangle → square → narrow pulse.</td></tr>
+          <tr><td>A6</td><td>DECAY</td><td>Fade duration: 30 ms–2.4 s.</td></tr>
+          <tr><td>A7</td><td>PITCH VEL</td><td>Up to three extra octaves of velocity-dependent pitch sweep.</td></tr>
+        </tbody></table></div>
+        <h3>3. Add the indicator and audio output</h3>
+        <p>Wire GPIO22 through a 680 Ω current-limiting resistor to the LED anode, and the cathode to GND.</p>
+        <p>The LED uses pulse-width modulation (<strong>PWM</strong>): fast on/off switching controls its apparent brightness. Accepted strikes set the brightness from the same velocity used by the synth, and the light fades in about 150 ms.</p>
+        <p>Audio is mono on the <strong>left output</strong>; the right output is intentionally silent. For the first test, use the board’s appropriate left audio output into a compatible powered monitor or interface, with its level turned down. The panel VOLUME control belongs to the analog output path. Its value and complete wiring are not documented, so verify the output type and load before designing that stage. Do not apply a line-level volume wiring assumption to the board’s speaker amplifier terminals.</p>
+        <details><summary>Which pins are already used inside the audio board?</summary><div class="table-scroll"><table><thead><tr><th>Function</th><th>ESP32 GPIO</th></tr></thead><tbody><tr><td>Codec I2C SDA / SCL</td><td>33 / 32, address 0x10</td></tr><tr><td>I2S MCLK / BCLK / LRCK</td><td>0 / 27 / 25</td></tr><tr><td>I2S data to / from codec</td><td>26 / 35</td></tr><tr><td>Amplifier enable</td><td>21</td></tr></tbody></table></div><p class="small">These assignments come from audio_io.cpp and es8388.cpp. They describe the supported audio board, not additional jumper wires you should add. Keep the external ADS7830 bus separate.</p></details>
+      </section>
+      <section id="firmware">
+        <div class="section-number">05 / The first power-up</div>
+        <h2>Get a measurement.<br>Then get a sound.</h2>
+        <p>The first commit, <a href="https://github.com/jakubthedeveloper/RudeBox/commit/423ea72">423ea72</a>, did something very useful before there was a synthesizer: it read LINE IN and printed signal peaks. That is a good way to approach your own build. First establish that a strike reaches the software, then ask why it sounds the way it does.</p>
+        <ol class="steps">
+          <li><strong>Inspect before powering.</strong> Check for bridges, verify ground continuity, and check that the 3.3 V rail is not shorted to GND. Confirm the diode directions and the eight wiper destinations.</li>
+          <li><strong>Get the project.</strong> Install PlatformIO using its <a href="https://docs.platformio.org/en/latest/core/installation/index.html">installation instructions</a>, clone or download RudeBox, and open a terminal at the repository root.</li>
+          <li><strong>Build before uploading.</strong> This catches toolchain and code issues independently of the USB connection.</li>
+        </ol>
+        <pre><code>git clone https://github.com/jakubthedeveloper/RudeBox.git
+cd RudeBox
+pio run</code></pre>
+        <p>The default environment is <code>esp32dev</code>, using the Arduino framework. Once the build succeeds, connect the board with a USB data cable and upload:</p>
+        <pre><code>pio run -t upload
+pio device monitor -b 115200</code></pre>
+        <p>If automatic port selection fails, select the connected board’s port with <code>--upload-port</code> for upload or <code>--port</code> for the monitor. The firmware’s default diagnostic output looks like <code>&gt;rawPeak:1234</code>; the number is an example. It is the largest input magnitude in an audio block, not a voltage measurement.</p>
+        <aside class="note"><p><strong>Check the framework version if the build fails at LED code.</strong> The repository does not pin its PlatformIO platform version, while user_interface.cpp uses <code>ledcAttach</code> and pin-based <code>ledcWrite</code>. Espressif introduced that API in Arduino-ESP32 3.x. An older core needs an API adaptation, or a compatible toolchain must be selected and validated with the project’s I2S driver. Record the working versions for your build; the repository alone does not establish a reproducible clean-install toolchain. See the <a href="https://github.com/espressif/arduino-esp32/blob/master/docs/en/migration_guides/2.x_to_3.0.rst">official migration guide</a>.</p></aside>
+        <h3>A useful first-sound checklist</h3>
+        <ol class="steps">
+          <li>Connect the ADC before starting the current firmware. Its initialization is required; a missing ADC can stop the application before the normal processing loop.</li>
+          <li>Turn the receiving monitor down. Start with PITCH low, a moderate DECAY, SHAPE near triangle, and CLICK, PITCH DROP, and PITCH VEL low. Use moderate SENSITIVITY and raise AMP VEL if you want a clear difference between weak and strong hits.</li>
+          <li>Strike the pad softly, then firmly. Confirm that <code>rawPeak</code> changes. Confirm that accepted hits light the LED. Listen on the left output and gradually raise the listening level.</li>
+          <li>Turn one control at a time. A5 SHAPE changes a playing sound immediately; the other sound settings are captured at the next accepted strike.</li>
+        </ol>
+        <p>If there is no serial output at all, enable <code>LOG_FATAL_ERRORS</code> in <code>include/app_config.h</code> and rebuild. It is disabled by default, so an initialization failure can otherwise look like a silent board. Close the serial monitor before opening another application on the same port.</p>
+      </section>
+      <section id="sound">
+        <div class="section-number">06 / How the code becomes an instrument</div>
+        <h2>Keep the main loop readable.</h2>
+        <p>The entry point in <code>main.cpp</code> simply starts the application and updates it. <code>application.cpp</code> coordinates the audio engine and interface. The lower layers handle their own details, so a reader can understand the whole instrument before opening a codec register table.</p>
+        <pre><code>// The application flow, simplified from application.cpp.
+const SynthControls controls = UserInterface::synthControls();
+const auto result = SynthEngine::processAudioBlock(controls);
+if (result.hitDetected) {
+  UserInterface::indicatePadHit(result.velocity);
+}
+UserInterface::update();</code></pre>
+        <div class="cards"><div class="card"><h3>Listen &amp; decide</h3><p>audio_io.cpp reads audio. hit_detector.cpp validates the impulse, measures strength, and waits for quiet before re-arming.</p></div><div class="card"><h3>Create the voice</h3><p>synth_voice.cpp combines an oscillator, a fading envelope, a pitch sweep, and a short noise click.</p></div><div class="card"><h3>Keep output bounded</h3><p>output_limiter.cpp applies 0.5 master gain, then limits sample peaks to 0.9 of full scale.</p></div><div class="card"><h3>Read the panel</h3><p>synth_control_input.cpp maps filtered ADC readings. user_interface.cpp owns the controls and the fading LED.</p></div></div>
+        <h3>From impulse to velocity</h3>
+        <p>Velocity here is a number between 0 and 1 representing playing strength, not a physical speed. The detector first decides whether an impulse is a strike. Only then does SENSITIVITY map its measured peak into velocity. This distinction matters: turning sensitivity down is not the same as rejecting electrical noise.</p>
+        <p>At low sensitivity, the curve makes weak hits quieter and requires a larger peak to reach full velocity. At high sensitivity, a modest hit gets a larger velocity. The interactive graph below uses the same mapping constants as <code>HitDetector::mapVelocity</code> at the article’s firmware snapshot.</p>
+        <div class="lab" id="velocity-lab" hidden>
+          <div class="label">Try it / The sensitivity curve</div><h3>One hit. Different responses.</h3>
+          <svg viewBox="0 0 640 275" role="img" aria-labelledby="curve-title curve-desc"><title id="curve-title">Input peak mapped to velocity</title><desc id="curve-desc">Horizontal axis: input peak from 0 to 12000. Vertical axis: velocity from 0 to 1. The curve and marker respond to the sliders below.</desc><g fill="none" stroke="#d7d8c8"><path d="M55 25V225H615M55 125H615M55 25H615"/></g><g fill="#626657" font-family="monospace" font-size="12"><text x="16" y="30">1.0</text><text x="16" y="130">0.5</text><text x="30" y="230">0</text><text x="55" y="250">0</text><text x="560" y="250">12000</text><text x="262" y="269">INPUT PEAK</text></g><path id="velocity-curve" d="M55 225H615" fill="none" stroke="#425c46" stroke-width="3"/><circle id="velocity-dot" cx="55" cy="225" r="6" fill="#cf542e"/></svg>
+          <div class="lab-controls"><div><label for="sensitivity">Sensitivity: <span id="sensitivity-value">50%</span></label><input id="sensitivity" type="range" min="0" max="100" value="50"></div><div><label for="peak">Accepted hit peak: <span id="peak-value">4000</span></label><input id="peak" type="range" min="0" max="12000" step="10" value="4000"></div></div>
+          <div>Mapped velocity <output id="velocity-result" for="sensitivity peak">0.000</output></div><p class="small">Mapping illustration only. This does not simulate strike validation, generate sound, or measure your pad.</p>
+        </div>
+        <h3>The anatomy of a drum sound</h3>
+        <p>An <strong>oscillator</strong> repeats a waveform: a triangle sounds smoother, while square and narrow pulse shapes add a sharper character. An <strong>envelope</strong> makes that waveform fade over time. In RudeBox the same exponential envelope also pulls the pitch down toward the base frequency. PITCH DROP sets a basic sweep; PITCH VEL adds more sweep with a harder strike.</p>
+        <p>CLICK adds an independent 8 ms burst of noise at the beginning. AMP VEL adjusts how much the oscillator’s loudness follows the hit. The click has its own velocity scaling. Both are mixed before the output gain and limiter, and the pitch calculation is capped at 8 kHz.</p>
+        <p>Try a low base pitch, triangle shape, and short decay for a kick-like starting point. Increase the drop and decay for a tom or sweep. Add a little click for definition, then explore the sharper shapes. These are starting experiments rather than measured presets from the demo.</p>
+        <h3>Why smooth the knobs?</h3>
+        <p>A stationary pot can still produce slightly changing ADC readings. The input layer scans at a configured 5 ms interval, blends readings with a filter factor of 0.12, and applies a change only after a difference of at least two ADC counts. That makes the controls steadier without mixing filtering calculations into the application loop.</p>
+      </section>
+      <section id="debugging">
+        <div class="section-number">07 / The bugs that shaped the instrument</div>
+        <h2>Build a way to see<br>what you cannot hear.</h2>
+        <p>The history is useful because it records fixes beyond adding knobs. Two problems show how hardware and software can produce similar symptoms, and why changing one number at random is rarely a satisfying diagnosis.</p>
+        <h3>Case 1: a spike is not necessarily a strike</h3>
+        <p>The <a href="https://github.com/jakubthedeveloper/RudeBox/commit/a67f102">hit-detection work in a67f102</a> added impulse validation. The later <a href="https://github.com/jakubthedeveloper/RudeBox/commit/1cadf1e">“False trigger fight” commit</a> made that validation inspect the tail as well. A brief electrical spike or a voltage jump with a weak tail could otherwise resemble a hit when judged mainly by its peak.</p>
+        <p>The current detector opens a 128-sample window when magnitude reaches 180. To accept it, at least 48 samples must reach 100, at least 16 of those must be in the tail starting at sample index 64, and the tail peak must retain at least 20% of the window’s maximum. After acceptance it locks out further hits until a subsequent whole input block peaks below 120.</p>
+        <p>At 44.1 kHz, 128 samples take about 2.9 ms. That is the validation window, not a measured end-to-end latency. Audio is processed in 256-frame blocks, about 5.8 ms each, and buffering also affects when sound reaches the output.</p>
+        <p>To investigate your own pad, enable <code>LOG_TRIGGER_VALIDATION</code> in <code>AppConfig::Diagnostics</code>. Compare <code>triggerAccepted</code>, <code>validationMax</code>, <code>activeSamples</code>, <code>tailMaximum</code>, <code>tailActiveSamples</code>, and <code>velocity</code> for weak, medium, and strong strikes. A one-sample spike should fail the active-sample requirement. <code>windowEnergy</code> is a diagnostic sum of magnitudes; it is not an acceptance condition in this version.</p>
+        <aside class="note"><p><strong>A hardware limit that software cannot remove:</strong> the repository documents MIC2N and LINEINR sharing the ES8388 RIN2 connection on this ESP32-A1S variant. Disabling microphone bias and the unused left ADC does not physically disconnect the microphone from the selected right input. Touching it can still trigger the synth. Full isolation needs a board-level disconnection of the microphone or its coupling components, verified against the actual board. The repo does not provide component designators for that modification.</p></aside>
+        <h3>Case 2: a pop after the note ends</h3>
+        <p>In <a href="https://github.com/jakubthedeveloper/RudeBox/commit/6be0d1e">6be0d1e</a>, the documented fix for a repeatable end-of-sound pop was a single codec register value. The final write to ES8388 register <code>0x19</code> changed from <code>0x00</code> to <code>0x22</code>, unmuting the DAC while preserving its default control bits.</p>
+        <pre><code>// Final codec setup value in src/es8388.cpp:
+{0x19, 0x22},  // Unmute the DAC and preserve its default control bits.</code></pre>
+        <p>The accompanying commit documentation reports that clearing the whole register caused a pop after sustained digital silence. The audio stream stays running, and the idle voice sends exact-zero PCM samples. The practical lesson is to inspect the codec’s transition into silence as well as the synth envelope; the audible symptom alone does not identify the layer responsible.</p>
+        <h3>A troubleshooting route you can repeat</h3>
+        <div class="table-scroll"><table><thead><tr><th>Symptom</th><th>First check</th><th>Next observation</th></tr></thead><tbody>
+          <tr><td>No serial output</td><td>USB data cable, port, 115200 baud; enable fatal logs.</td><td>Look for I2S, codec, or UI initialization failure.</td></tr>
+          <tr><td>Knobs do nothing</td><td>ADC power, GND, address 0x48, SDA23/SCL18, reference jumpers.</td><td>Enable LOG_CONTROL_VALUES in AppConfig::Controls; turn one knob at a time.</td></tr>
+          <tr><td>rawPeak stays near zero</td><td>Pad cable, protection circuit, actual right LINE IN contact.</td><td>Compare idle and struck input before changing detector settings.</td></tr>
+          <tr><td>Peaks, but no LED or sound</td><td>Trigger validation logs.</td><td>Find which active-sample or tail condition rejects the impulse.</td></tr>
+          <tr><td>LED flashes, but no sound</td><td>Left output, analog volume, receiving equipment.</td><td>The hit was accepted; now follow the output path.</td></tr>
+          <tr><td>Unwanted triggers</td><td>Loose connections, shared ground, microphone coupling.</td><td>Compare rejected and accepted candidate shapes before adjusting thresholds.</td></tr>
+          <tr><td>Closely spaced hits disappear</td><td>Whether the input returns below the re-arm level for a whole block.</td><td>Look for ringing or noise keeping the detector locked out.</td></tr>
+          <tr><td>Pop after silence</td><td>Final 0x19 register value and continuous I2S output.</td><td>Recheck the hardware fix; a native waveform test cannot exercise the codec.</td></tr>
+        </tbody></table></div>
+        <p>Change one setting, rebuild, and repeat the same set of strikes. Start with <code>rawPeak</code> and validation before tuning the velocity curve. The current input gain code is 2, corresponding to 6 dB; pad calibration defaults are <code>PAD_INPUT_MIN = 120</code> and <code>PAD_INPUT_MAX = 10000</code>. They are calibration choices in ADC units, not universal properties of drum pads.</p>
+        <h3>Test the sound without the board</h3>
+        <p>The <a href="https://github.com/jakubthedeveloper/RudeBox/commit/c520728">c520728 commit</a> introduced native tests. Fake audio I/O lets a computer feed controlled impulses through the actual hardware-independent signal path. The current suite includes isolated spikes, weak tails, validation across blocks, lockout, velocity response, click behavior, pitch modulation, decay, and limiting.</p>
+        <pre><code>pio test -e native</code></pre>
+        <p>The tests also regenerate SVG waveform and sensitivity plots in <code>test/artifacts/</code>. Open them to inspect the output after changing the synth. These tests exercise the digital processing; they cannot prove that the board wiring, codec registers, analog noise, or final hardware latency are correct. Finish with a listening test and real pad measurements.</p>
+      </section>
+      <section id="enclosure">
+        <div class="section-number">08 / From prototype to playable box</div>
+        <h2>Make room for your hands.</h2>
+        <p>The project photograph shows a practical panel: brightly colored knobs, large handwritten labels, and enough separation to recognize controls while playing. The upper row carries sensitivity, pitch, drop, click, amplitude velocity, and volume; the lower row adds shape, decay, and pitch velocity.</p>
+        <p>Lay out your actual pots and connectors before drilling. Allow space underneath for solder joints and cable bends. Mount the boards securely, insulate exposed connections, and provide strain relief so pulling an external cable does not pull on a solder joint. Keep the pad input wiring short and away from noisy digital wiring where practical.</p>
+        <p>Then repeat the bench tests with everything inside the enclosure. Move cables, turn every knob, and play soft and strong strokes. Check that the LED fades, the controls follow their labels, the idle output stays quiet, and a new accepted strike restarts the voice. Enclosing a working circuit is another change worth testing.</p>
+        <p class="closing">The finish line is a box you can understand, repair, and play. Every measurement and every clear label makes that easier.</p>
+      </section>
+      <section id="sources">
+        <div class="section-number">09 / The project notebook</div>
+        <h2>Built from evidence.</h2>
+        <p>This guide describes the repository at <a href="https://github.com/jakubthedeveloper/RudeBox/tree/881fcd1">881fcd1</a>, including the README’s hardware notes and the supplied photograph. The milestones below trace the implementation without assuming that commit dates describe every physical assembly step.</p>
+        <div class="timeline">
+          <div class="milestone"><div class="date">02 AUG 2026</div><p><strong>Measure, then synthesize.</strong> The first revision reads pad input peaks; the next adds a drum synth.</p><a href="https://github.com/jakubthedeveloper/RudeBox/commit/423ea72">423ea72</a> · <a href="https://github.com/jakubthedeveloper/RudeBox/commit/245713c">245713c</a></div>
+          <div class="milestone"><div class="date">04–06 AUG 2026</div><p><strong>Add physical control.</strong> ADS7830 input arrives, followed by refactoring and mapped potentiometer controls.</p><a href="https://github.com/jakubthedeveloper/RudeBox/commit/263e234">263e234</a> · <a href="https://github.com/jakubthedeveloper/RudeBox/commit/e51c18b">e51c18b</a> · <a href="https://github.com/jakubthedeveloper/RudeBox/commit/fb41201">fb41201</a></div>
+          <div class="milestone"><div class="date">07 AUG 2026</div><p><strong>Make behavior testable.</strong> Native tests, mono output, and stronger hit detection establish the signal path.</p><a href="https://github.com/jakubthedeveloper/RudeBox/commit/c520728">c520728</a> · <a href="https://github.com/jakubthedeveloper/RudeBox/commit/b1bf1ec">b1bf1ec</a> · <a href="https://github.com/jakubthedeveloper/RudeBox/commit/a67f102">a67f102</a></div>
+          <div class="milestone"><div class="date">08–09 AUG 2026</div><p><strong>Make it expressive.</strong> Click, amplitude velocity, the LED, and expanded controls develop the playing response.</p><a href="https://github.com/jakubthedeveloper/RudeBox/commit/ae921da">ae921da</a> · <a href="https://github.com/jakubthedeveloper/RudeBox/commit/a2fbc4a">a2fbc4a</a> · <a href="https://github.com/jakubthedeveloper/RudeBox/commit/1aadb03">1aadb03</a></div>
+          <div class="milestone"><div class="date">09–11 AUG 2026</div><p><strong>Remove the rough edges.</strong> The codec pop fix, tail-based trigger validation, and the documented finished build.</p><a href="https://github.com/jakubthedeveloper/RudeBox/commit/6be0d1e">6be0d1e</a> · <a href="https://github.com/jakubthedeveloper/RudeBox/commit/1cadf1e">1cadf1e</a> · <a href="https://github.com/jakubthedeveloper/RudeBox/commit/881fcd1">881fcd1</a></div>
+        </div>
+        <ul class="source-list">
+          <li><a href="https://github.com/jakubthedeveloper/RudeBox/blob/881fcd1/README.md">README.md</a> — hardware, protection network, breakout jumpers, and controls.</li>
+          <li><a href="https://github.com/jakubthedeveloper/RudeBox/blob/881fcd1/include/app_config.h">app_config.h</a> — current ranges, thresholds, gains, LED configuration, and diagnostics.</li>
+          <li><a href="https://github.com/jakubthedeveloper/RudeBox/blob/881fcd1/src/audio_io.cpp">audio_io.cpp</a> and <a href="https://github.com/jakubthedeveloper/RudeBox/blob/881fcd1/src/es8388.cpp">es8388.cpp</a> — audio pins, selected channels, and codec initialization.</li>
+          <li><a href="https://github.com/jakubthedeveloper/RudeBox/blob/881fcd1/src/hit_detector.cpp">hit_detector.cpp</a>, <a href="https://github.com/jakubthedeveloper/RudeBox/blob/881fcd1/src/synth_voice.cpp">synth_voice.cpp</a>, and <a href="https://github.com/jakubthedeveloper/RudeBox/blob/881fcd1/src/synth_control_input.cpp">synth_control_input.cpp</a> — strike decisions, sound generation, and knob mapping.</li>
+          <li><a href="https://github.com/jakubthedeveloper/RudeBox/blob/881fcd1/test/test_audio_signal_path/test_audio_signal_path.cpp">Native signal-path tests</a> — executable scenarios and generated plot coverage.</li>
+        </ul>
+      </section>
+    </article></main>
+  </div>
+  <footer class="footer"><span>RUDEBOX / From the workbench to the stage.</span><a href="#top">Back to the top ↑</a></footer>
+</div>
+</body>
+</html>

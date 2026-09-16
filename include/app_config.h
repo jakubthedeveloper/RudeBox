@@ -6,7 +6,7 @@ namespace AppConfig {
 
 namespace Diagnostics {
 
-constexpr bool LOG_AUDIO_PEAKS = true;
+constexpr bool LOG_AUDIO_PEAKS = false;
 constexpr bool LOG_TRIGGER_VALIDATION = false;
 constexpr bool LOG_FATAL_ERRORS = false;
 

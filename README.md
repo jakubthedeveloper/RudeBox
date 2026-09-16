@@ -127,7 +127,7 @@ Hardware tuning and sound ranges are centralized in `include/app_config.h`:
 - `AppConfig::AudioOutput` contains master gain and limiter settings.
 - `AppConfig::Ui` contains the ADS7830 bus and sensitivity LED settings.
 
-Serial diagnostics use 115200 baud. In the current configuration, `LOG_AUDIO_PEAKS` is enabled and streams the measured input peak as Teleplot-compatible `rawPeak` data. Trigger-validation, control-value, and fatal-error logging are disabled. These categories can be changed independently in `AppConfig::Diagnostics` and `AppConfig::Controls`.
+All serial diagnostics are disabled in the current configuration, so the firmware does not initialize the UART for logging. These categories can be enabled independently in `AppConfig::Diagnostics` and `AppConfig::Controls`. When enabled, serial diagnostics use 115200 baud, and `LOG_AUDIO_PEAKS` streams the measured input peak as Teleplot-compatible `rawPeak` data.
 
 For trigger tuning, compare `rawPeak` and the mapped velocity for light, medium, and strong strikes. `LOG_TRIGGER_VALIDATION` additionally reports whether a candidate was accepted, its captured maximum, active samples, tail maximum, tail activity, and window energy. An isolated spike should normally have one active sample and be rejected.
 

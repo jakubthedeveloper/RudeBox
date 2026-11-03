@@ -1,6 +1,7 @@
 #pragma once
 
 #include "audio_io.h"
+#include "hit_detector.h"
 
 namespace AppConfig {
 
@@ -9,6 +10,11 @@ namespace Diagnostics {
 constexpr bool LOG_AUDIO_PEAKS = false;
 constexpr bool LOG_TRIGGER_VALIDATION = false;
 constexpr bool LOG_FATAL_ERRORS = false;
+
+// Prints signed pad input samples from one block before each strike candidate
+// through the end of the capture. Printing pauses audio for several seconds.
+constexpr bool LOG_PAD_WAVEFORM = false;
+constexpr size_t PAD_WAVEFORM_CAPTURE_BLOCKS = 24;
 
 }  // namespace Diagnostics
 
@@ -44,6 +50,13 @@ constexpr uint16_t TRIGGER_TAIL_START_SAMPLE = 64;
 constexpr uint16_t TRIGGER_MIN_TAIL_ACTIVE_SAMPLES = 16;
 constexpr float TRIGGER_MIN_TAIL_PEAK_RATIO = 0.20f;
 constexpr uint16_t TRIGGER_REARM_THRESHOLD = 120;
+// Minimum lockout after a validated impulse, covering its rebound.
+constexpr float RETRIGGER_HOLDOFF_MS = 60.0f;
+
+// Required sign of a strike's validation-window sum. A DC trigger button
+// produces a positive press and a negative release through the AC-coupled input.
+constexpr HitDetector::TriggerPolarity TRIGGER_POLARITY =
+    HitDetector::TriggerPolarity::Positive;
 
 constexpr float VELOCITY_EFFECTIVE_MAX_AT_MIN_SENSITIVITY =
     PAD_INPUT_MAX * 1.15f;

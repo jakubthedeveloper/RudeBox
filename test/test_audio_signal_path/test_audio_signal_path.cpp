@@ -80,9 +80,21 @@ struct VelocityRenderResult {
   std::vector<int16_t> outputSamples;
 };
 
+constexpr size_t RETRIGGER_HOLDOFF_BLOCKS =
+    static_cast<size_t>(AudioIo::SAMPLE_RATE *
+                        AppConfig::HitDetection::RETRIGGER_HOLDOFF_MS /
+                        1000.0f) /
+        AudioIo::BLOCK_FRAMES +
+    1;
+
+// Quiet blocks long enough for the retrigger hold-off establish the real
+// detector's armed baseline after any preceding impulse.
 void resetHitDetector(float sensitivity = TEST_CONTROLS.sensitivity) {
-  const std::vector<uint16_t> quietBlock(AudioIo::BLOCK_FRAMES, 0);
-  HitDetector::process(quietBlock.data(), quietBlock.size(), sensitivity);
+  const std::vector<int16_t> quietBlock(AudioIo::BLOCK_FRAMES, 0);
+  for (size_t block = 0; block <= RETRIGGER_HOLDOFF_BLOCKS; ++block) {
+    HitDetector::process(quietBlock.data(), quietBlock.size(), sensitivity,
+                         HitDetector::TriggerPolarity::Any);
+  }
 }
 
 std::filesystem::path artifactDirectory() {
@@ -238,11 +250,12 @@ void testMixedClickAndVoiceArtifact() {
 
 void testSingleSampleElectricalSpikeIsRejected() {
   resetHitDetector();
-  std::vector<uint16_t> magnitudes(AudioIo::BLOCK_FRAMES, 0);
-  magnitudes[20] = 3000;
+  std::vector<int16_t> samples(AudioIo::BLOCK_FRAMES, 0);
+  samples[20] = 3000;
 
   const HitDetector::Result result = HitDetector::process(
-      magnitudes.data(), magnitudes.size(), TEST_CONTROLS.sensitivity);
+      samples.data(), samples.size(), TEST_CONTROLS.sensitivity,
+      HitDetector::TriggerPolarity::Any);
 
   TEST_ASSERT_TRUE(result.candidateStarted);
   TEST_ASSERT_TRUE(result.validationCompleted);
@@ -256,18 +269,19 @@ void testSingleSampleElectricalSpikeIsRejected() {
 
 void testVoltageJumpWithWeakTailIsRejected() {
   resetHitDetector();
-  std::vector<uint16_t> magnitudes(AudioIo::BLOCK_FRAMES, 0);
+  std::vector<int16_t> samples(AudioIo::BLOCK_FRAMES, 0);
   constexpr size_t CANDIDATE_SAMPLE = 20;
-  magnitudes[CANDIDATE_SAMPLE] = 1000;
+  samples[CANDIDATE_SAMPLE] = 1000;
   for (size_t sample = CANDIDATE_SAMPLE + 1;
        sample < CANDIDATE_SAMPLE +
                     AppConfig::HitDetection::TRIGGER_VALIDATION_SAMPLES;
        ++sample) {
-    magnitudes[sample] = 150;
+    samples[sample] = 150;
   }
 
   const HitDetector::Result result = HitDetector::process(
-      magnitudes.data(), magnitudes.size(), TEST_CONTROLS.sensitivity);
+      samples.data(), samples.size(), TEST_CONTROLS.sensitivity,
+      HitDetector::TriggerPolarity::Any);
 
   TEST_ASSERT_TRUE(result.candidateStarted);
   TEST_ASSERT_TRUE(result.validationCompleted);
@@ -285,26 +299,27 @@ void testVoltageJumpWithWeakTailIsRejected() {
 
 void testSustainedLightPadTailIsAccepted() {
   resetHitDetector();
-  std::vector<uint16_t> magnitudes(AudioIo::BLOCK_FRAMES, 0);
+  std::vector<int16_t> samples(AudioIo::BLOCK_FRAMES, 0);
   constexpr size_t CANDIDATE_SAMPLE = 20;
-  magnitudes[CANDIDATE_SAMPLE] = 180;
-  magnitudes[CANDIDATE_SAMPLE + 1] = 420;
+  samples[CANDIDATE_SAMPLE] = 180;
+  samples[CANDIDATE_SAMPLE + 1] = 420;
   for (size_t sample = CANDIDATE_SAMPLE + 2;
        sample < CANDIDATE_SAMPLE +
                     AppConfig::HitDetection::TRIGGER_TAIL_START_SAMPLE;
        ++sample) {
-    magnitudes[sample] = 160;
+    samples[sample] = 160;
   }
   for (size_t sample = CANDIDATE_SAMPLE +
                        AppConfig::HitDetection::TRIGGER_TAIL_START_SAMPLE;
        sample < CANDIDATE_SAMPLE +
                     AppConfig::HitDetection::TRIGGER_VALIDATION_SAMPLES;
        ++sample) {
-    magnitudes[sample] = 110;
+    samples[sample] = 110;
   }
 
   const HitDetector::Result result = HitDetector::process(
-      magnitudes.data(), magnitudes.size(), TEST_CONTROLS.sensitivity);
+      samples.data(), samples.size(), TEST_CONTROLS.sensitivity,
+      HitDetector::TriggerPolarity::Any);
 
   TEST_ASSERT_TRUE(result.candidateStarted);
   TEST_ASSERT_TRUE(result.validationCompleted);
@@ -322,16 +337,17 @@ void testSustainedLightPadTailIsAccepted() {
 
 void testValidationContinuesAcrossInputBlocks() {
   resetHitDetector();
-  std::vector<uint16_t> firstBlock(AudioIo::BLOCK_FRAMES, 0);
+  std::vector<int16_t> firstBlock(AudioIo::BLOCK_FRAMES, 0);
   firstBlock.back() = 420;
 
   const HitDetector::Result firstResult = HitDetector::process(
-      firstBlock.data(), firstBlock.size(), TEST_CONTROLS.sensitivity);
+      firstBlock.data(), firstBlock.size(), TEST_CONTROLS.sensitivity,
+      HitDetector::TriggerPolarity::Any);
   TEST_ASSERT_TRUE(firstResult.candidateStarted);
   TEST_ASSERT_FALSE(firstResult.validationCompleted);
   TEST_ASSERT_FALSE(firstResult.hitDetected);
 
-  std::vector<uint16_t> secondBlock(AudioIo::BLOCK_FRAMES, 0);
+  std::vector<int16_t> secondBlock(AudioIo::BLOCK_FRAMES, 0);
   for (size_t sample = 0;
        sample < AppConfig::HitDetection::TRIGGER_TAIL_START_SAMPLE - 1;
        ++sample) {
@@ -344,7 +360,8 @@ void testValidationContinuesAcrossInputBlocks() {
     secondBlock[sample] = 110;
   }
   const HitDetector::Result secondResult = HitDetector::process(
-      secondBlock.data(), secondBlock.size(), TEST_CONTROLS.sensitivity);
+      secondBlock.data(), secondBlock.size(), TEST_CONTROLS.sensitivity,
+      HitDetector::TriggerPolarity::Any);
 
   TEST_ASSERT_TRUE(secondResult.validationCompleted);
   TEST_ASSERT_TRUE(secondResult.hitDetected);
@@ -355,7 +372,7 @@ void testValidationContinuesAcrossInputBlocks() {
   TEST_ASSERT_EQUAL_UINT16(110, secondResult.tailMaximum);
 }
 
-void testAcceptedHitStaysLockedOutUntilQuietBlock() {
+void testAcceptedHitStaysLockedOutUntilHoldoffAndQuietBlock() {
   resetHitDetector();
   FakeAudioIo::reset();
   FakeAudioIo::simulatePadImpulse(600);
@@ -365,12 +382,122 @@ void testAcceptedHitStaysLockedOutUntilQuietBlock() {
   FakeAudioIo::simulatePadImpulse(500);
   TEST_ASSERT_FALSE(
       SynthEngine::processAudioBlock(TEST_CONTROLS).hitDetected);
-  TEST_ASSERT_FALSE(
-      SynthEngine::processAudioBlock(TEST_CONTROLS).hitDetected);
+  for (size_t block = 0; block <= RETRIGGER_HOLDOFF_BLOCKS; ++block) {
+    TEST_ASSERT_FALSE(
+        SynthEngine::processAudioBlock(TEST_CONTROLS).hitDetected);
+  }
 
   FakeAudioIo::simulatePadImpulse(500);
   TEST_ASSERT_TRUE(
       SynthEngine::processAudioBlock(TEST_CONTROLS).hitDetected);
+}
+
+std::vector<int16_t> unipolarPadImpulse(int16_t peak) {
+  std::vector<int16_t> samples(AudioIo::BLOCK_FRAMES, 0);
+  constexpr int32_t LAST_SAMPLE =
+      AppConfig::HitDetection::TRIGGER_VALIDATION_SAMPLES - 1;
+  for (int32_t sample = 0; sample <= LAST_SAMPLE; ++sample) {
+    const int32_t percentage = 100 - 75 * sample / LAST_SAMPLE;
+    samples[sample] = static_cast<int16_t>(peak * percentage / 100);
+  }
+  return samples;
+}
+
+HitDetector::Result processWithPolarity(const std::vector<int16_t>& samples,
+                                        HitDetector::TriggerPolarity polarity) {
+  return HitDetector::process(samples.data(), samples.size(),
+                              TEST_CONTROLS.sensitivity, polarity);
+}
+
+void testTriggerPolarityFiltersCandidateSign() {
+  struct PolarityCase {
+    HitDetector::TriggerPolarity polarity;
+    int16_t peak;
+    bool accepted;
+  };
+  constexpr PolarityCase CASES[] = {
+      {HitDetector::TriggerPolarity::Any, 600, true},
+      {HitDetector::TriggerPolarity::Any, -600, true},
+      {HitDetector::TriggerPolarity::Positive, 600, true},
+      {HitDetector::TriggerPolarity::Positive, -600, false},
+      {HitDetector::TriggerPolarity::Negative, 600, false},
+      {HitDetector::TriggerPolarity::Negative, -600, true},
+  };
+
+  for (const PolarityCase& testCase : CASES) {
+    resetHitDetector();
+    const HitDetector::Result result = processWithPolarity(
+        unipolarPadImpulse(testCase.peak), testCase.polarity);
+
+    TEST_ASSERT_TRUE(result.candidateStarted);
+    TEST_ASSERT_EQUAL_INT8(testCase.peak < 0 ? -1 : 1, result.candidateSign);
+    TEST_ASSERT_EQUAL(testCase.accepted, result.hitDetected);
+    TEST_ASSERT_EQUAL(!testCase.accepted, result.polarityRejected);
+    TEST_ASSERT_EQUAL_UINT16(600, result.rawPeak);
+  }
+}
+
+// Models the measured AC-coupled step: the edge returns through zero within
+// one block and then settles into a weaker opposite-sign rebound.
+void verifyReboundIsIgnored(int16_t edgePeak,
+                            HitDetector::TriggerPolarity polarity,
+                            bool edgeAccepted) {
+  constexpr int16_t REBOUND_LEVEL = 220;
+  resetHitDetector();
+  const HitDetector::Result edgeResult =
+      processWithPolarity(unipolarPadImpulse(edgePeak), polarity);
+  TEST_ASSERT_EQUAL(edgeAccepted, edgeResult.hitDetected);
+  TEST_ASSERT_EQUAL(!edgeAccepted, edgeResult.polarityRejected);
+
+  const std::vector<int16_t> zeroCrossing(AudioIo::BLOCK_FRAMES, 0);
+  TEST_ASSERT_FALSE(processWithPolarity(zeroCrossing, polarity).hitDetected);
+
+  const std::vector<int16_t> rebound(
+      AudioIo::BLOCK_FRAMES,
+      static_cast<int16_t>(edgePeak < 0 ? REBOUND_LEVEL : -REBOUND_LEVEL));
+  for (size_t block = 0; block <= RETRIGGER_HOLDOFF_BLOCKS + 1; ++block) {
+    const HitDetector::Result result = processWithPolarity(rebound, polarity);
+    TEST_ASSERT_FALSE(result.candidateStarted);
+    TEST_ASSERT_FALSE(result.hitDetected);
+  }
+
+  TEST_ASSERT_FALSE(processWithPolarity(zeroCrossing, polarity).hitDetected);
+  TEST_ASSERT_TRUE(
+      processWithPolarity(unipolarPadImpulse(600), polarity).hitDetected);
+}
+
+void testReboundAfterZeroCrossingDoesNotRetrigger() {
+  verifyReboundIsIgnored(600, HitDetector::TriggerPolarity::Any, true);
+}
+
+void testPolarityRejectedReleaseReboundDoesNotTrigger() {
+  verifyReboundIsIgnored(-600, HitDetector::TriggerPolarity::Positive, false);
+}
+
+void testWindowSumIgnoresAlternatingPreRinging() {
+  resetHitDetector();
+  std::vector<int16_t> samples = unipolarPadImpulse(2000);
+  constexpr int16_t PRE_RINGING[] = {-400, 300, -650, 800};
+  for (size_t sample = 0; sample < 4; ++sample) {
+    samples[sample] = PRE_RINGING[sample];
+  }
+
+  const HitDetector::Result result =
+      processWithPolarity(samples, HitDetector::TriggerPolarity::Positive);
+
+  TEST_ASSERT_TRUE(result.hitDetected);
+  TEST_ASSERT_EQUAL_INT8(1, result.candidateSign);
+}
+
+void testInvertedPadImpulseFollowsConfiguredPolarity() {
+  resetHitDetector();
+  FakeAudioIo::reset();
+  FakeAudioIo::simulateInvertedPadImpulse(600);
+
+  const bool expectedHit = AppConfig::HitDetection::TRIGGER_POLARITY !=
+                           HitDetector::TriggerPolarity::Positive;
+  TEST_ASSERT_EQUAL(
+      expectedHit, SynthEngine::processAudioBlock(TEST_CONTROLS).hitDetected);
 }
 
 bool blockContainsNonZeroSample(const int32_t* samples) {
@@ -654,7 +781,12 @@ int main(int, char**) {
   RUN_TEST(testVoltageJumpWithWeakTailIsRejected);
   RUN_TEST(testSustainedLightPadTailIsAccepted);
   RUN_TEST(testValidationContinuesAcrossInputBlocks);
-  RUN_TEST(testAcceptedHitStaysLockedOutUntilQuietBlock);
+  RUN_TEST(testAcceptedHitStaysLockedOutUntilHoldoffAndQuietBlock);
+  RUN_TEST(testTriggerPolarityFiltersCandidateSign);
+  RUN_TEST(testReboundAfterZeroCrossingDoesNotRetrigger);
+  RUN_TEST(testPolarityRejectedReleaseReboundDoesNotTrigger);
+  RUN_TEST(testWindowSumIgnoresAlternatingPreRinging);
+  RUN_TEST(testInvertedPadImpulseFollowsConfiguredPolarity);
   RUN_TEST(testClickIsSilentAtMinimumLevel);
   RUN_TEST(testClickDecaysAndCanBeRetriggered);
   RUN_TEST(testAmpVelocityInterpolatesBetweenConstantAndFullDynamics);

@@ -14,11 +14,6 @@ constexpr size_t RIGHT_SLOT = 1;
 int16_t inputBuffer[BLOCK_FRAMES * I2S_CHANNEL_COUNT];
 int16_t outputBuffer[BLOCK_FRAMES * I2S_CHANNEL_COUNT];
 
-uint16_t magnitude(int16_t sample) {
-  const int32_t value = sample;
-  return static_cast<uint16_t>(value < 0 ? -value : value);
-}
-
 }  // namespace
 
 bool begin() {
@@ -51,7 +46,7 @@ bool begin() {
   return false;
 }
 
-bool readMagnitudeBlock(Channel channel, MagnitudeBlock& block) {
+bool readSampleBlock(Channel channel, SampleBlock& block) {
   size_t bytesRead = 0;
   if (i2s_read(PORT, inputBuffer, sizeof(inputBuffer), &bytesRead,
                pdMS_TO_TICKS(100)) != ESP_OK) {
@@ -64,8 +59,7 @@ bool readMagnitudeBlock(Channel channel, MagnitudeBlock& block) {
   const size_t slot = channel == Channel::Left ? LEFT_SLOT : RIGHT_SLOT;
   block.sampleCount = frames;
   for (size_t frame = 0; frame < frames; ++frame) {
-    block.samples[frame] =
-        magnitude(inputBuffer[frame * I2S_CHANNEL_COUNT + slot]);
+    block.samples[frame] = inputBuffer[frame * I2S_CHANNEL_COUNT + slot];
   }
   return true;
 }

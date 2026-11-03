@@ -42,7 +42,7 @@ SENSITIVITY determines the velocity assigned to each accepted pad strike. That s
 
 ### How the sound is generated
 
-The pad input first passes through an impulse-shape check that rejects isolated electrical spikes and sharp voltage changes with weak tails. A valid strike is measured over a 128-sample window, adding about 2.9 ms of validation time at the 44.1 kHz sample rate. Its peak is then mapped to a normalized velocity using the SENSITIVITY setting.
+The pad input first passes through an impulse-shape check that rejects isolated electrical spikes and sharp voltage changes with weak tails, followed by a polarity check. A valid strike is measured over a 128-sample window, adding about 2.9 ms of validation time at the 44.1 kHz sample rate. Its peak is then mapped to a normalized velocity using the SENSITIVITY setting. After every validated impulse, the detector stays locked for at least 60 ms and then until a quiet input block, so the rebound of the AC-coupled input cannot retrigger the voice.
 
 Each accepted strike starts a main oscillator and an independent noise click. The main oscillator uses a continuously variable triangle, square, or pulse waveform. One exponential envelope controls both its volume decay and its fall from the initial pitch to the base PITCH. PITCH DROP supplies the basic sweep, while PITCH VEL adds a velocity-dependent sweep. The 8 ms noise click adds attack without changing the main DECAY time.
 
@@ -75,6 +75,16 @@ SIGNAL ----|<|----+---- GND
 
 PAD SLEEVE ---------------------------- GND
 ```
+
+#### Trigger polarity
+
+The pad input is AC-coupled, so a DC trigger source such as a push button that connects 5 V to the pad input produces two impulses of opposite sign: a positive one when it is pressed and a negative one when it is released. Each edge returns through zero within about 20 ms and is followed by a weaker opposite-sign rebound that lasts more than 100 ms.
+
+`AppConfig::HitDetection::TRIGGER_POLARITY` selects which sign a strike must have: `Positive` (the default, which accepts button presses and ignores releases), `Negative`, or `Any`. The sign is taken from the sum of the samples in the validation window rather than from the first sample, because the codec's decimation filter rings with alternating signs just before a sharp edge. An impulse with the other sign is ignored and locks the detector out exactly like an accepted strike.
+
+`AppConfig::HitDetection::RETRIGGER_HOLDOFF_MS` sets the minimum lockout after every validated impulse, 60 ms by default. Without it, the zero crossing after an edge would re-arm the detector and the rebound would trigger a second, almost silent strike that restarts the voice. The hold-off also limits the instrument to about 15 strikes per second.
+
+The polarity of a piezo pad's first half-wave depends on its construction and wiring and has not been measured with the current firmware. If pad strikes are ignored, enable `LOG_TRIGGER_VALIDATION`, compare `candidateSign` for pad strikes and button presses, and set `TRIGGER_POLARITY` to `Any` when they differ.
 
 #### ESP32-A1S input limitation
 
@@ -121,7 +131,7 @@ Only accepted pad strikes light the LED. Its brightness represents the same velo
 Hardware tuning and sound ranges are centralized in `include/app_config.h`:
 
 - `AppConfig::AudioInput` selects the LINE IN channel and input gain.
-- `AppConfig::HitDetection` contains trigger validation, re-arm, pad calibration, and sensitivity-response values.
+- `AppConfig::HitDetection` contains trigger validation, re-arm and retrigger hold-off, trigger polarity, pad calibration, and sensitivity-response values.
 - `AppConfig::Controls` contains potentiometer channels, scan behavior, ranges, and startup values.
 - `AppConfig::Voice` contains oscillator, click, amplitude-velocity, and pitch-envelope limits.
 - `AppConfig::AudioOutput` contains master gain and limiter settings.
@@ -129,7 +139,9 @@ Hardware tuning and sound ranges are centralized in `include/app_config.h`:
 
 All serial diagnostics are disabled in the current configuration, so the firmware does not initialize the UART for logging. These categories can be enabled independently in `AppConfig::Diagnostics` and `AppConfig::Controls`. When enabled, serial diagnostics use 115200 baud, and `LOG_AUDIO_PEAKS` streams the measured input peak as Teleplot-compatible `rawPeak` data.
 
-For trigger tuning, compare `rawPeak` and the mapped velocity for light, medium, and strong strikes. `LOG_TRIGGER_VALIDATION` additionally reports whether a candidate was accepted, its captured maximum, active samples, tail maximum, tail activity, and window energy. An isolated spike should normally have one active sample and be rejected.
+For trigger tuning, compare `rawPeak` and the mapped velocity for light, medium, and strong strikes. `LOG_TRIGGER_VALIDATION` additionally reports whether a candidate was accepted, the sign of its validation-window sum (`candidateSign`), whether it was rejected by the polarity check (`polarityRejected`), its captured maximum, active samples, tail maximum, tail activity, and window energy. An isolated spike should normally have one active sample and be rejected.
+
+`LOG_PAD_WAVEFORM` records the signed pad input from one block before each strike candidate for `PAD_WAVEFORM_CAPTURE_BLOCKS` blocks, about 139 ms by default, and then prints it as `#waveBegin`, one `#wave:` line of comma-separated samples per block, and `#waveEnd`. Printing a capture takes about 2.5 s at 115200 baud and pauses the audio loop, so the interrupted voice resumes afterwards and new strikes are missed during that time. Leave several seconds between test strikes.
 
 ### Build and upload
 
@@ -149,7 +161,7 @@ Use a 115200-baud serial monitor when any diagnostic category is enabled.
 
 ### Tests
 
-The native tests exercise the hardware-independent audio path, including strike validation and lockout, velocity mapping, oscillator shape, click behavior, decay and retriggering, pitch modulation, amplitude dynamics, and output limiting.
+The native tests exercise the hardware-independent audio path, including strike validation, lockout and retrigger hold-off, trigger polarity, velocity mapping, oscillator shape, click behavior, decay and retriggering, pitch modulation, amplitude dynamics, and output limiting.
 
 Run them from the project root:
 
@@ -166,7 +178,8 @@ The source is organized from application flow to hardware and signal-processing 
 - `main.cpp` starts and updates the application.
 - `application.cpp` coordinates the audio path and user interface.
 - `synth_engine.cpp` reads the pad input, detects strikes, triggers and renders the voice, and writes the output.
-- `hit_detector.cpp` validates pad impulses, maps velocity, and prevents retriggering until the input is re-armed.
+- `hit_detector.cpp` validates pad impulses, checks their polarity, maps velocity, and prevents retriggering until the hold-off has elapsed and the input is re-armed.
+- `pad_waveform_capture.cpp` records and prints the raw pad input around strike candidates for diagnostics.
 - `synth_voice.cpp` generates the oscillator, envelopes, pitch sweep, and noise click.
 - `synth_control_input.cpp` scans and maps the eight potentiometers; `user_interface.cpp` owns the controls and sensitivity LED.
 - `output_limiter.cpp` applies output gain and limiting; `waveforms.cpp` provides oscillator shapes.

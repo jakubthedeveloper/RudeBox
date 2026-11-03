@@ -19,6 +19,7 @@ void stop(const char* message) {
 void initializeSerial() {
   if (!AppConfig::Diagnostics::LOG_AUDIO_PEAKS &&
       !AppConfig::Diagnostics::LOG_TRIGGER_VALIDATION &&
+      !AppConfig::Diagnostics::LOG_PAD_WAVEFORM &&
       !AppConfig::Diagnostics::LOG_FATAL_ERRORS &&
       !AppConfig::Controls::LOG_CONTROL_VALUES) {
     return;

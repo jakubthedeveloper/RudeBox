@@ -3,6 +3,7 @@
 #include <math.h>
 
 #include "app_config.h"
+#include "audio_io.h"
 #include "math_utils.h"
 
 namespace HitDetector {
@@ -21,10 +22,16 @@ struct ValidationWindow {
   uint16_t tailMaximum;
   uint16_t tailActiveSamples;
   uint32_t energy;
+  int32_t signedSum;
 };
+
+constexpr uint32_t RETRIGGER_HOLDOFF_SAMPLES = static_cast<uint32_t>(
+    AudioIo::SAMPLE_RATE * AppConfig::HitDetection::RETRIGGER_HOLDOFF_MS /
+    1000.0f);
 
 State state = State::Idle;
 ValidationWindow validation = {};
+uint32_t lockedOutSamples = 0;
 
 static_assert(
     AppConfig::HitDetection::VELOCITY_EFFECTIVE_MAX_AT_MIN_SENSITIVITY >
@@ -54,37 +61,48 @@ static_assert(
     AppConfig::HitDetection::TRIGGER_FOLLOW_THRESHOLD <=
         AppConfig::HitDetection::TRIGGER_PRE_THRESHOLD,
     "Follow threshold must not exceed the candidate threshold");
+static_assert(AppConfig::HitDetection::RETRIGGER_HOLDOFF_MS >= 0.0f,
+              "Retrigger hold-off must not be negative");
 static_assert(
     AppConfig::HitDetection::TRIGGER_REARM_THRESHOLD <=
         AppConfig::HitDetection::TRIGGER_PRE_THRESHOLD,
     "Rearm threshold must not exceed the candidate threshold");
 
-void beginValidation(uint16_t magnitude);
-void collectValidationSample(uint16_t magnitude);
+uint16_t sampleMagnitude(int16_t sample);
+void beginValidation(int16_t sample);
+void collectValidationSample(int16_t sample);
 bool validationWindowIsComplete();
 bool validationWindowIsAccepted();
+bool validationWindowMatchesPolarity(TriggerPolarity polarity);
+void lockOut();
+void countLockedOutSample();
+bool canRearm(uint16_t blockPeak);
 void copyValidationDiagnostics(Result& result);
 
 }  // namespace
 
-Result process(const uint16_t* magnitudes, size_t sampleCount,
-               float sensitivity) {
+Result process(const int16_t* samples, size_t sampleCount, float sensitivity,
+               TriggerPolarity polarity) {
   Result result = {};
   const bool startedLockedOut = state == State::LockedOut;
 
   for (size_t index = 0; index < sampleCount; ++index) {
-    const uint16_t magnitude = magnitudes[index];
+    const int16_t sample = samples[index];
+    const uint16_t magnitude = sampleMagnitude(sample);
     if (magnitude > result.rawPeak) result.rawPeak = magnitude;
 
-    if (state == State::LockedOut) continue;
+    if (state == State::LockedOut) {
+      countLockedOutSample();
+      continue;
+    }
 
     if (state == State::Idle) {
       if (magnitude < AppConfig::HitDetection::TRIGGER_PRE_THRESHOLD) continue;
 
-      beginValidation(magnitude);
+      beginValidation(sample);
       result.candidateStarted = true;
     } else {
-      collectValidationSample(magnitude);
+      collectValidationSample(sample);
     }
 
     if (!validationWindowIsComplete()) continue;
@@ -96,7 +114,11 @@ Result process(const uint16_t* magnitudes, size_t sampleCount,
       continue;
     }
 
-    state = State::LockedOut;
+    lockOut();
+    if (!validationWindowMatchesPolarity(polarity)) {
+      result.polarityRejected = true;
+      continue;
+    }
     result.hitDetected = true;
   }
 
@@ -112,23 +134,26 @@ Result process(const uint16_t* magnitudes, size_t sampleCount,
     copyValidationDiagnostics(result);
   }
 
-  if (startedLockedOut &&
-      result.rawPeak < AppConfig::HitDetection::TRIGGER_REARM_THRESHOLD) {
-    state = State::Idle;
-  }
+  if (startedLockedOut && canRearm(result.rawPeak)) state = State::Idle;
 
   return result;
 }
 
 namespace {
 
-void beginValidation(uint16_t magnitude) {
-  validation = {};
-  state = State::Validating;
-  collectValidationSample(magnitude);
+uint16_t sampleMagnitude(int16_t sample) {
+  const int32_t value = sample;
+  return static_cast<uint16_t>(value < 0 ? -value : value);
 }
 
-void collectValidationSample(uint16_t magnitude) {
+void beginValidation(int16_t sample) {
+  validation = {};
+  state = State::Validating;
+  collectValidationSample(sample);
+}
+
+void collectValidationSample(int16_t sample) {
+  const uint16_t magnitude = sampleMagnitude(sample);
   const bool isTailSample =
       validation.sampleCount >=
       AppConfig::HitDetection::TRIGGER_TAIL_START_SAMPLE;
@@ -142,6 +167,7 @@ void collectValidationSample(uint16_t magnitude) {
     validation.tailMaximum = magnitude;
   }
   validation.energy += magnitude;
+  validation.signedSum += sample;
 }
 
 bool validationWindowIsComplete() {
@@ -164,12 +190,44 @@ bool validationWindowIsAccepted() {
          retainsEnoughTailAmplitude;
 }
 
+// The window sum follows the dominant half-wave. The first sample is not used
+// because the codec's decimation filter rings with alternating signs before a
+// sharp edge.
+bool validationWindowMatchesPolarity(TriggerPolarity polarity) {
+  switch (polarity) {
+    case TriggerPolarity::Positive:
+      return validation.signedSum > 0;
+    case TriggerPolarity::Negative:
+      return validation.signedSum < 0;
+    case TriggerPolarity::Any:
+      break;
+  }
+  return true;
+}
+
+void lockOut() {
+  state = State::LockedOut;
+  lockedOutSamples = 0;
+}
+
+void countLockedOutSample() {
+  if (lockedOutSamples < RETRIGGER_HOLDOFF_SAMPLES) ++lockedOutSamples;
+}
+
+// The hold-off skips the zero crossing between an AC-coupled edge and its
+// opposite-sign rebound, which would otherwise re-arm the detector early.
+bool canRearm(uint16_t blockPeak) {
+  return lockedOutSamples >= RETRIGGER_HOLDOFF_SAMPLES &&
+         blockPeak < AppConfig::HitDetection::TRIGGER_REARM_THRESHOLD;
+}
+
 void copyValidationDiagnostics(Result& result) {
   result.validationMax = validation.maximum;
   result.activeSamples = validation.activeSamples;
   result.tailMaximum = validation.tailMaximum;
   result.tailActiveSamples = validation.tailActiveSamples;
   result.windowEnergy = validation.energy;
+  result.candidateSign = validation.signedSum < 0 ? -1 : 1;
 }
 
 }  // namespace
